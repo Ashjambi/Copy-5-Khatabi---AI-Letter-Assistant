@@ -77,29 +77,11 @@ export enum View {
   REPORTING,
 }
 
-export enum ReferralStatus {
-    PENDING = 'معلق',
-    COMPLETED = 'مكتمل',
-    REJECTED = 'مرفوض'
-}
-
 export interface User {
   id: string;
   name: string;
   role: UserRole;
   department: string;
-}
-
-export interface Referral {
-    id: string;
-    letterId: string;
-    fromUserId: string;
-    toUserId: string;
-    instructions: string;
-    status: ReferralStatus;
-    createdAt: string;
-    completedAt?: string;
-    response?: string;
 }
 
 export interface ApprovalRecord {
@@ -125,6 +107,12 @@ export interface Comment {
     letterId: string;
     text: string;
     createdAt: string;
+}
+
+export interface AICache {
+    brief?: { summary: string; keyPoints: string[] };
+    smartReplies?: SmartReply[];
+    threadSummary?: string;
 }
 
 export interface Letter {
@@ -154,6 +142,7 @@ export interface Letter {
   category?: string;
   summary?: string;
   creatorId?: string;
+  aiCache?: AICache;
 }
 
 export interface Template {
@@ -198,11 +187,6 @@ export interface LetterVariations {
   diplomatic: string;
 }
 
-export interface ContextualReferences {
-  citations: string[];
-  phrasingImprovements: string[];
-}
-
 export interface EnhancementSuggestion {
   original_part: string;
   suggested_improvement: string;
@@ -214,26 +198,31 @@ export interface FollowUpItem {
     letterId: string;
 }
 
+export interface SmartSearchResult {
+    letterId: string;
+    relevanceReason: string;
+    confidenceScore: number;
+}
+
 export interface ExtractedLetterDetails {
     subject?: string;
     from?: string;
     to?: string;
     date?: string;
     externalRefNumber?: string;
-    letterType?: LetterType;
-    category?: string;
     summary?: string;
+    category?: string;
     priority?: PriorityLevel;
     confidentiality?: ConfidentialityLevel;
     referenceId?: string;
-    isSupplementary?: boolean;
+    letterType?: LetterType;
     referencedNumber?: string;
 }
 
 export interface SmartReply {
     title: string;
     objective: string;
-    tone: Tone;
+    tone: string;
     type: 'positive' | 'negative' | 'neutral' | 'inquiry';
 }
 
@@ -255,7 +244,7 @@ export interface GeneratorState {
     editedBody: string;
     selectedVariationKey: 'neutral' | 'strict' | 'diplomatic';
     analysisResult: string[] | null;
-    contextualReferences: ContextualReferences | null;
+    contextualReferences: any | null;
     templateFields: Record<string, string>;
     activeTemplateObjective: string;
     referenceId?: string;

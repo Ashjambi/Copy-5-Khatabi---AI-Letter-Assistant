@@ -25,7 +25,7 @@ export async function onRequestPost(context: any) {
 
     // تشعيب المهام بناءً على الطلب
     if (task === 'generate_variations') {
-        modelName = "gemini-3-pro-preview";
+        modelName = "gemini-3-pro-preview"; // للمهام المعقدة نستخدم النسخة الاحترافية
         const { isReply, originalContent, objective, sender, receiver, subject, principles } = payload;
         systemInstruction += ` المطلوب توليد 3 نسخ بصيغة HTML (neutral, strict, diplomatic). الأسلوب المفضل: ${principles}`;
         finalPrompt = isReply 
@@ -124,8 +124,10 @@ export async function onRequestPost(context: any) {
 
   } catch (e: any) {
     console.error("AI Proxy Error:", e);
+    // إرجاع رمز الخطأ الأصلي إذا كان متاحاً (مثل 429)
+    const status = e.message?.includes('429') ? 429 : 500;
     return new Response(JSON.stringify({ error: e.message }), { 
-        status: 500,
+        status,
         headers: { "Content-Type": "application/json" }
     });
   }
