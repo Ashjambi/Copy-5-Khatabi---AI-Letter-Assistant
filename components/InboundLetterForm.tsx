@@ -95,30 +95,10 @@ export default function InboundLetterForm(): React.ReactNode {
     }
 
     setIsScanning(true);
-    const toastId = toast.loading("جاري قراءة وتحليل الوثيقة...");
+    const toastId = toast.loading("جاري قراءة وتحليل الوثيقة سحابياً...");
     
     try {
-        let base64Data: string;
-        let mimeType: string = file.type;
-        
-        if (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
-            const arrayBuffer = await file.arrayBuffer();
-            const tiff = new Tiff({ buffer: arrayBuffer });
-            const canvas = tiff.toCanvas();
-            if (!canvas) throw new Error("Could not convert TIFF file.");
-            const dataUrl = canvas.toDataURL('image/png');
-            base64Data = dataUrl.split(',')[1];
-            mimeType = 'image/png';
-        } else {
-            const dataUrl = await fileToDataURL(file);
-            const splitData = dataUrl.split(',');
-            base64Data = splitData[1];
-            if (!mimeType) {
-                const header = splitData[0];
-                mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
-            }
-        }
-
+        // نرسل الملف مباشرة الآن للخدمة المحدثة
         const letterTypes = Object.values(LetterType) as string[];
         const priorityLevels = Object.values(PriorityLevel) as string[];
         const confidentialityLevels = Object.values(ConfidentialityLevel) as string[];
@@ -133,8 +113,7 @@ export default function InboundLetterForm(): React.ReactNode {
         }));
 
         const extractedData = await extractDetailsFromLetterImage(
-            base64Data, 
-            mimeType, 
+            file, 
             settings.departments, 
             letterTypes, 
             priorityLevels, 
@@ -163,8 +142,8 @@ export default function InboundLetterForm(): React.ReactNode {
         toast.success("تم استخلاص البيانات بنجاح!", { id: toastId });
 
     } catch(error: any) {
-        console.error("OCR Catch Error:", error);
-        toast.error(error.message || "فشل الذكاء الاصطناعي في تحليل الوثيقة. تأكد من وضوح الملف وصحة مفتاح الوصول.", { id: toastId });
+        console.error("OCR Final Catch Error:", error);
+        toast.error(error.message || "فشل الذكاء الاصطناعي في تحليل الوثيقة. يرجى التحقق من حجم الملف أو مفتاح الوصول.", { id: toastId });
     } finally {
         setIsScanning(false);
         if (e.target) e.target.value = '';
@@ -241,12 +220,12 @@ export default function InboundLetterForm(): React.ReactNode {
                  {isScanning ? (
                     <>
                         <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
-                        <span className="font-black text-lg uppercase tracking-widest">جاري التحليل...</span>
+                        <span className="font-black text-lg uppercase tracking-widest">جاري التحليل السحابي...</span>
                     </>
                  ) : (
                     <>
                         <LinkIcon className="w-6 h-6 group-hover:rotate-12 transition-transform" />
-                        <span className="text-lg font-black tracking-tight">بدء المسح الضوئي الذكي (OCR)</span>
+                        <span className="text-lg font-black tracking-tight">بدء المسح الضوئي الذكي (File API)</span>
                     </>
                  )}
             </button>

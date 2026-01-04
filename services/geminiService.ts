@@ -17,8 +17,7 @@ const ARABIC_STRICT_CONNECTED_SCRIPT = `
 `;
 
 export async function extractDetailsFromLetterImage(
-  base64Image: string,
-  mimeType: string,
+  file: File, // تم التغيير لاستقبال ملف File مباشرة
   departments: string[],
   letterTypes: string[],
   priorityLevels: string[],
@@ -27,37 +26,33 @@ export async function extractDetailsFromLetterImage(
   existingLetters: { id: string, subject: string, internalRefNumber?: string, externalRefNumber?: string, date: string }[]
 ): Promise<ExtractedLetterDetails> {
   
-  // تقليل السياق لأحدث 5 معاملات فقط لتقليل حجم الـ Payload الإجمالي وضمان استقرار الطلب
+  // تقليل السياق لأحدث 5 معاملات فقط لضمان بقاء الطلب خفيفاً
   const lettersContext = existingLetters.slice(0, 5).map(l => 
     `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
   ).join('\n');
 
   try {
-      // إرسال البيانات إلى الـ Cloudflare Function
+      // إرسال الملف عبر FormData لضمان معالجة Binary سليمة في Cloudflare
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('lettersContext', lettersContext);
+
       const response = await fetch('/api/ocr', {
           method: 'POST',
-          headers: { 
-              'Content-Type': 'application/json',
-              'Accept': 'application/json'
-          },
-          body: JSON.stringify({
-              base64Image: base64Image.includes(',') ? base64Image.split(',')[1] : base64Image,
-              mimeType,
-              lettersContext
-          })
+          body: formData
       });
 
       if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.error || "فشل تحليل الوثيقة سحابياً.");
+          throw new Error(errorData.error || "فشل تحليل المستند سحابياً.");
       }
 
       const result = await response.json();
       return result as ExtractedLetterDetails;
       
   } catch (error: any) {
-      console.error("OCR API Proxy Error:", error);
-      throw new Error(error.message || "تأكد من وضوح الملف وصحة مفتاح الوصول في إعدادات Cloudflare.");
+      console.error("OCR Fetch Proxy Error:", error);
+      throw new Error(error.message || "تأكد من إعدادات Cloudflare وصحة مفتاح الـ API.");
   }
 }
 
