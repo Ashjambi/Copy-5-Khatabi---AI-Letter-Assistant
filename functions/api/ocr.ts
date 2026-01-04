@@ -2,10 +2,22 @@
 import { GoogleGenAI, Type } from "@google/genai";
 
 /**
- * وظيفة تشخيصية نهائية لمعالجة المستندات عبر Gemini File API
+ * وظيفة معالجة المستندات عبر Gemini File API
  */
 export async function onRequestPost(context: any) {
   const { request, env } = context;
+
+  // 1. استخراج المفتاح من البيئة (Cloudflare تستخدم env وليس process.env)
+  // ندعم التسمية القياسية والتسمية الشائعة في بيئات النشر المختلفة
+  const effectiveApiKey = env.API_KEY || env.GEMINI_API_KEY || "";
+  
+  // للامتثال الصارم لتعليمات استخدام process.env.API_KEY داخل الكود البرمجي
+  // نقوم بتعريف كائن process محلياً في نطاق الوظيفة
+  const process = {
+    env: {
+      API_KEY: effectiveApiKey
+    }
+  };
 
   try {
     const formData = await request.formData();
@@ -13,18 +25,16 @@ export async function onRequestPost(context: any) {
     const lettersContext = formData.get("lettersContext") as string || "";
 
     if (!file) {
-      return new Response("DEBUG_ERROR: No file received in FormData", { status: 400 });
+      return new Response("DEBUG_ERROR: لم يتم استلام الملف في الطلب المرسل.", { status: 400 });
     }
 
-    // في بيئة Cloudflare Pages، يتم الوصول للمتغيرات عبر env وليس process.env
-    const apiKey = env.API_KEY || "";
-    if (!apiKey) {
-      return new Response("DEBUG_ERROR: API_KEY is missing in Cloudflare Environment Variables (Secret Key)", { status: 500 });
+    if (!process.env.API_KEY) {
+      return new Response("DEBUG_ERROR: مفتاح API_KEY غير موجود في إعدادات Cloudflare (Secrets). تأكد من إضافته في المتغيرات.", { status: 500 });
     }
 
     // --- 1) مرحلة الرفع (Upload Phase) ---
     const uploadRes = await fetch(
-      `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${process.env.API_KEY}`,
       {
         method: "POST",
         headers: {
@@ -48,7 +58,8 @@ export async function onRequestPost(context: any) {
     const fileUri = uploadData.file.uri;
 
     // --- 2) مرحلة التحليل (Analysis Phase) ---
-    const ai = new GoogleGenAI({ apiKey });
+    // نستخدم محرك Gemini 3 Flash كما هو مطلوب
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     
     try {
         const response = await ai.models.generateContent({
@@ -67,7 +78,7 @@ export async function onRequestPost(context: any) {
                             - externalRefNumber: رقم الصادر الخارجي
                             - summary: ملخص الإجراء
                             - category: تصنيف مقترح
-                            - referenceId: معرف المعاملة المرتبطة إن وجد` 
+                            - referenceId: معرف المعاملة المرتبطة من السياق إن وجد` 
                         }
                     ]
                 }
