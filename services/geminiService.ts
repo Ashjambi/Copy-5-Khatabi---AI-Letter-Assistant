@@ -1,45 +1,49 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-// @FIX: Added SmartSearchResult to imports to fix error in Archive.tsx
 import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone, SmartSearchResult } from "../types";
 
-const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
-
+/**
+ * تحليل متن الخطاب لاستخراج ملخص تنفيذي ونقاط العمل
+ */
 export async function analyzeLetterBrief(letter: Letter): Promise<{ summary: string, keyPoints: string[] }> {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const content = letter.body.replace(/<[^>]*>?/gm, ' ');
     
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `أنت مساعد إداري خبير. حلل الخطاب التالي بدقة واستخرج موجزاً إدارياً:
-        الموضوع: ${letter.subject}
-        المحتوى: ${content}
-        
-        المطلوب JSON:
-        - summary: ملخص تنفيذي مركز (سطرين بكلمات متصلة).
-        - keyPoints: قائمة بالفقرات أو النقاط المحددة التي تستوجب الرد أو الإجراء القانوني/الإداري.`,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    // @FIX: Using Type.STRING for schema definition
-                    summary: { type: Type.STRING },
-                    // @FIX: Using Type.ARRAY and Type.STRING for schema definition
-                    keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } }
-                },
-                required: ["summary", "keyPoints"]
-            }
-        }
-    });
-
     try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `أنت مساعد إداري خبير في تحليل المراسلات الرسمية العربية. 
+            المهمة: قم بتحليل الخطاب التالي واستخرج ملخصاً تنفيذياً ونقاط العمل الجوهرية بكلمات عربية متصلة تماماً.
+            
+            الخطاب:
+            الموضوع: ${letter.subject}
+            المحتوى: ${content}
+            
+            أعد النتيجة بصيغة JSON:
+            - summary: ملخص سطرين.
+            - keyPoints: مصفوفة نصوص للنقاط الهامة.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.OBJECT,
+                    properties: {
+                        summary: { type: Type.STRING },
+                        keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } }
+                    },
+                    required: ["summary", "keyPoints"]
+                }
+            }
+        });
+
         return JSON.parse(response.text || "{}");
     } catch (e) {
         return { summary: "تعذر تحليل المحتوى حالياً.", keyPoints: [] };
     }
 }
 
+/**
+ * استخلاص البيانات من صور الخطابات (OCR الذكي)
+ */
 export async function extractDetailsFromLetterImage(
   base64Image: string,
   mimeType: string,
@@ -50,25 +54,23 @@ export async function extractDetailsFromLetterImage(
   existingCategories: string[],
   existingLetters: { id: string, subject: string, internalRefNumber?: string, externalRefNumber?: string, date: string }[]
 ): Promise<ExtractedLetterDetails> {
-  const ai = getAI();
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const lettersContext = existingLetters.map(l => 
-    `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", ExtRef: "${l.externalRefNumber || ''}", Subject: "${l.subject}", Date: "${l.date}"`
+    `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
   ).join('\n');
-
-  const systemInstruction = `أنت خبير لغوي وإداري عربي متخصص في استخلاص البيانات من الوثائق الرسمية.
-  **قواعد ذهبية:** كلمات عربية متصلة تماماً (لا تقطع الحروف). استخلص (الموضوع، المرسل، المستلم، التاريخ، رقم الصادر، التصنيف، الأولوية). طابق مع السياق: ${lettersContext}`;
 
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: {
         parts: [
-            { text: `حلل صورة الخطاب المرفقة واستخرج البيانات بصيغة JSON.` },
+            { text: `أنت خبير أرشفة رقمية. استخلص البيانات من الوثيقة المرفقة بصيغة JSON. الكلمات العربية متصلة تماماً.
+            السياق المرجعي:
+            ${lettersContext}` },
             { inlineData: { mimeType, data: base64Image } }
         ]
     },
     config: {
-        systemInstruction,
         responseMimeType: "application/json",
         responseSchema: {
             type: Type.OBJECT,
@@ -93,116 +95,146 @@ export async function extractDetailsFromLetterImage(
   return JSON.parse(response.text || "{}") as ExtractedLetterDetails;
 }
 
+/**
+ * اقتراح مسارات رد ذكية
+ */
 export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]> {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const content = letter.summary || letter.body.replace(/<[^>]*>?/gm, ' ');
     
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `أنت مستشار إداري. اقترح 3 مسارات احترافية للرد على: ${letter.subject}. المحتوى: ${content}. اكتب بكلمات متصلة.`,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        title: { type: Type.STRING },
-                        objective: { type: Type.STRING },
-                        tone: { type: Type.STRING },
-                        type: { type: Type.STRING, enum: ["positive", "negative", "neutral", "inquiry"] }
-                    },
-                    required: ["title", "objective", "tone", "type"]
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `اقترح 3 مسارات استراتيجية للرد على هذا الخطاب: "${letter.subject}". المحتوى: ${content}. أجب بصيغة JSON بكلمات متصلة.`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            title: { type: Type.STRING },
+                            objective: { type: Type.STRING },
+                            tone: { type: Type.STRING },
+                            type: { type: Type.STRING, enum: ["positive", "negative", "neutral", "inquiry"] }
+                        },
+                        required: ["title", "objective", "tone", "type"]
+                    }
                 }
             }
-        }
-    });
-    
-    return JSON.parse(response.text || "[]") as SmartReply[];
+        });
+        
+        return JSON.parse(response.text || "[]") as SmartReply[];
+    } catch (e) {
+        return [];
+    }
 }
 
+/**
+ * تنقيح نص الخطاب عبر الدردشة
+ */
 export async function refineLetterWithChat(currentBody: string, userInstruction: string, context: string): Promise<string> {
-    const ai = getAI();
-    const prompt = `الخطاب الحالي بصيغة HTML: ${currentBody}
-    
-    السياق المرجعي: ${context}
-    تعليمات المستخدم للتعديل: ${userInstruction}
-    
-    المطلوب: قم بتعديل نص الخطاب بناءً على التعليمات فقط، وأعد النص الجديد كاملاً بصيغة HTML مبسطة بكلمات عربية متصلة تماماً. حافظ على الطابع الرسمي والرصين.`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const prompt = `الخطاب الحالي: ${currentBody}
+    السياق: ${context}
+    تعليمات المستخدم: ${userInstruction}
+    المطلوب: تعديل النص بناءً على التعليمات وإرجاع النص كاملاً بصيغة HTML بسيطة بكلمات عربية متصلة.`;
 
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: prompt,
         config: { temperature: 0.3 }
     });
+    
     return response.text || currentBody;
 }
 
+/**
+ * تحسين الصياغة الإدارية
+ */
 export async function enhanceLetter(text: string): Promise<EnhancementSuggestion[]> {
-    const ai = getAI();
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `راجع النص وقدم اقتراحات تحسين إدارية بكلمات متصلة:\n\n${text}`,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        original_part: { type: Type.STRING },
-                        suggested_improvement: { type: Type.STRING },
-                        reason: { type: Type.STRING }
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `راجع النص التالي وقدم اقتراحات لتحسين صياغته الإدارية بكلمات متصلة:\n\n${text}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            original_part: { type: Type.STRING },
+                            suggested_improvement: { type: Type.STRING },
+                            reason: { type: Type.STRING }
+                        },
+                        required: ["original_part", "suggested_improvement", "reason"]
                     }
                 }
             }
-        }
-    });
-    return JSON.parse(response.text || "[]");
+        });
+        return JSON.parse(response.text || "[]");
+    } catch (e) {
+        return [];
+    }
 }
 
+/**
+ * تلخيص سلسلة مراسلات
+ */
 export async function summarizeCorrespondenceThread(thread: Letter[]): Promise<string> {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const threadText = thread.map(l => `${l.from} -> ${l.to}: ${l.subject}`).join('\n');
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `لخص السلسلة بكلمات متصلة:\n\n${threadText}`,
+        contents: `لخص سلسلة المراسلات هذه بكلمات عربية متصلة:\n\n${threadText}`,
         config: { temperature: 0.2 }
     });
     return response.text || "";
 }
 
+/**
+ * تحليل المعاملات التي تحتاج متابعة
+ */
 export async function getFollowUpSummary(letters: Letter[]): Promise<FollowUpItem[]> {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const summaries = letters.map(l => ({ id: l.id, subject: l.subject }));
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `حدد ما يحتاج متابعة عاجلة: ${JSON.stringify(summaries)}`,
-        config: {
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.ARRAY,
-                items: {
-                    type: Type.OBJECT,
-                    properties: {
-                        // @FIX: Using Type.STRING for schema definition
-                        letterId: { type: Type.STRING },
-                        // @FIX: Using Type.STRING for schema definition
-                        summary: { type: Type.STRING }
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `حدد المعاملات التي تحتاج متابعة عاجلة:\n\n${JSON.stringify(summaries)}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            letterId: { type: Type.STRING },
+                            summary: { type: Type.STRING }
+                        },
+                        required: ["letterId", "summary"]
                     }
                 }
             }
-        }
-    });
-    return JSON.parse(response.text || "[]");
+        });
+        return JSON.parse(response.text || "[]");
+    } catch (e) {
+        return [];
+    }
 }
 
+/**
+ * توليد مسودات الخطاب (3 خيارات)
+ */
 export async function generateLetterVariations(context: any) {
-    const ai = getAI();
-    const systemInstruction = `أنت خبير صياغة إدارية. كلمات متصلة. 3 مسودات HTML. الأسلوب: ${context.principles}`;
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const systemInstruction = `أنت خبير صياغة مراسلات إدارية رسمية. كلمات متصلة الحروف تماماً. الأسلوب: ${context.principles}`;
+
     const prompt = context.isReply 
-        ? `رد على: ${context.originalContent}. التوجيه: ${context.objective}. من ${context.sender} إلى ${context.receiver}. الموضوع: ${context.subject}.`
-        : `إنشاء خطاب: ${context.subject}. المحتوى: ${context.objective}. المرسل: ${context.sender} | المستلم: ${context.receiver}.`;
+        ? `رد على خطاب: ${context.originalContent}. الهدف: ${context.objective}. من ${context.sender} إلى ${context.receiver}. الموضوع: ${context.subject}`
+        : `إنشاء خطاب جديد: ${context.subject}. المحتوى: ${context.objective}. المرسل: ${context.sender} | المستلم: ${context.receiver}`;
 
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -213,15 +245,10 @@ export async function generateLetterVariations(context: any) {
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    // @FIX: Using Type constants for schema definition
                     analysis: { type: Type.OBJECT, properties: { strategic_feedback: { type: Type.ARRAY, items: { type: Type.STRING } } } },
                     variations: {
                         type: Type.OBJECT,
-                        properties: { 
-                            neutral: { type: Type.STRING }, 
-                            strict: { type: Type.STRING }, 
-                            diplomatic: { type: Type.STRING } 
-                        },
+                        properties: { neutral: { type: Type.STRING }, strict: { type: Type.STRING }, diplomatic: { type: Type.STRING } },
                         required: ["neutral", "strict", "diplomatic"]
                     }
                 }
@@ -231,14 +258,16 @@ export async function generateLetterVariations(context: any) {
     return JSON.parse(response.text || "{}");
 }
 
-// @FIX: Added missing searchLettersSmartly function to fix error in Archive.tsx
+/**
+ * البحث السياقي الذكي
+ */
 export async function searchLettersSmartly(query: string, letters: Letter[]): Promise<SmartSearchResult[]> {
-    const ai = getAI();
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const list = letters.map(l => ({ id: l.id, subject: l.subject }));
     
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `أنت مساعد بحث إداري ذكي. ابحث سياقياً عن "${query}" في القائمة التالية وأرجع النتائج المرتبطة. القائمة: ${JSON.stringify(list)}`,
+        contents: `ابحث عن المعاملات المرتبطة بـ "${query}" في: ${JSON.stringify(list)}. أرجع النتائج بصيغة JSON.`,
         config: {
             responseMimeType: "application/json",
             responseSchema: {

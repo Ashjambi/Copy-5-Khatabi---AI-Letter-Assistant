@@ -1,247 +1,396 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Letter, LetterStatus, CorrespondenceType, Attachment, PriorityLevel, Tone, View, ConfidentialityLevel } from '../types';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
+import { Letter, LetterStatus, ApprovalRecord, CorrespondenceType, Attachment, User, Comment, PriorityLevel, ConfidentialityLevel, CompanySettings, View, EnhancementSuggestion, LetterType, SmartReply, Tone } from '../types';
 import { toast } from 'react-hot-toast';
-import { generateSmartReplies, analyzeLetterBrief } from '../services/geminiService';
+import { summarizeCorrespondenceThread, enhanceLetter, generateSmartReplies, analyzeLetterBrief } from '../services/geminiService';
 import RichTextEditor from './RichTextEditor';
+import DiffViewer from './DiffViewer';
+import InboundCoverSheet from './InboundCoverSheet';
+import OutboundLetterHeader from './OutboundLetterHeader';
 import { useApp } from '../App';
-import { getThemeClasses, getStatusChip, getPriorityChip, sanitizeHTML, getConfidentialityChip } from './utils';
-import { ClockIcon, SendIcon, FileTextIcon, SparklesIcon, BotIcon, InfoIcon, ShieldCheckIcon, PrinterIcon, LinkIcon } from './icons';
+import { getThemeClasses, getStatusChip, getPriorityChip, getConfidentialityChip, sanitizeHTML } from './utils';
+import DeliveryReceipt from './DeliveryReceipt';
+import ProofreadModal from './ProofreadModal';
+import WorkflowTracker from './WorkflowTracker';
+import { LinkIcon, InboxInIcon, ClockIcon, SendIcon, ArchiveIcon, CheckCircleIcon, XCircleIcon, ArrowRightLeftIcon, FileTextIcon, DownloadIcon, SparklesIcon, PrinterIcon, BotIcon } from './icons';
+import { FileSystemService } from '../services/fileSystemService';
 
-export default function LetterDetails({ letter }: { letter: Letter }) {
+interface LetterDetailsProps {
+  letter: Letter;
+}
+
+function dataURLtoBlob(dataurl: string): Blob | null {
+    try {
+        const arr = dataurl.split(',');
+        if (arr.length < 2) return null;
+        const mimeMatch = arr[0].match(/:(.*?);/);
+        if (!mimeMatch || mimeMatch.length < 2) return null;
+        const mime = mimeMatch[1];
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        return new Blob([u8arr], { type: mime });
+    } catch (e) {
+        console.error("Error converting data URL to blob", e);
+        return null;
+    }
+}
+
+// @FIX: Added missing fileToDataURL helper
+const fileToDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+    });
+};
+
+const DetailItem = ({ label, value, children, fullWidth = false }: { label: string, value?: string | number, children?: React.ReactNode, fullWidth?: boolean }) => (
+    <div className={fullWidth ? 'md:col-span-2 lg:col-span-3' : ''}>
+        <p className="text-[10px] font-black text-slate-500 mb-1 uppercase tracking-widest">{label}</p>
+        {value && <p className="font-bold text-base text-white break-words">{value}</p>}
+        {children && <div className="font-bold text-base text-white">{children}</div>}
+    </div>
+);
+
+const PrintableLetter = ({ letter, settings }: { letter: Letter, settings: CompanySettings }) => {
+    const watermarkText = `${letter.confidentiality === ConfidentialityLevel.TOP_SECRET ? "سري للغاية\n" : ""}${settings.companyName}\n${new Date().toLocaleString('ar-SA')}`;
+    
+    return (
+        <div className="bg-white">
+            <div className="print-watermark" style={{ whiteSpace: 'pre-wrap' }}>{watermarkText}</div>
+            <div className="p-10" style={{ fontFamily: 'Cairo, sans-serif' }}>
+                <div className="printable-header">
+                    {letter.correspondenceType === CorrespondenceType.OUTBOUND && (
+                        <OutboundLetterHeader letter={letter} settings={settings} />
+                    )}
+                </div>
+                <div className="prose max-w-none prose-slate font-bold text-black" dangerouslySetInnerHTML={{ __html: sanitizeHTML(letter.body) }} />
+                {letter.isSigned && (
+                    <div className="mt-8 pt-4 border-t border-dashed">
+                        <p className="text-sm text-emerald-700 font-bold flex items-center gap-2">
+                            <span>(تم التوقيع إلكترونياً)</span>
+                        </p>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default function LetterDetails({ letter }: LetterDetailsProps): React.ReactNode {
   const { state, dispatch } = useApp();
-  const { companySettings: settings } = state;
+  const { letters: allLetters, companySettings: settings, comments } = state;
   
   const [isEditing, setIsEditing] = useState(false);
   const [editedBody, setEditedBody] = useState(letter.body);
-  const [smartReplies, setSmartReplies] = useState<any[]>([]);
-  const [loadingReplies, setLoadingReplies] = useState(false);
+  const [bodyBeforeEdit, setBodyBeforeEdit] = useState('');
+  const attachmentInputRef = useRef<HTMLInputElement>(null);
+  const [activeTab, setActiveTab] = useState<'content' | 'comments' | 'history'>('content');
+  const [newComment, setNewComment] = useState('');
+  const [diffData, setDiffData] = useState<{ old: string; new: string } | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [printableContent, setPrintableContent] = useState<React.ReactNode | null>(null);
   
+  const [isProofreading, setIsProofreading] = useState(false);
+  const [showProofreadModal, setShowProofreadModal] = useState(false);
+  const [proofreadSuggestions, setProofreadSuggestions] = useState<EnhancementSuggestion[]>([]);
+
   const [aiBrief, setAiBrief] = useState<{summary: string, keyPoints: string[]} | null>(null);
-  const [loadingBrief, setLoadingBrief] = useState(false);
+  const [isLoadingBrief, setIsLoadingBrief] = useState(false);
+  const [smartReplies, setSmartReplies] = useState<SmartReply[]>([]);
+  const [isLoadingSmartReplies, setIsLoadingSmartReplies] = useState(false);
 
-  const theme = getThemeClasses(settings.primaryColor);
+  const printRoot = document.getElementById('print-root');
 
-  const loadAiContent = useCallback(async () => {
-    setLoadingBrief(true);
-    setLoadingReplies(true);
-    
-    // تحليل متن الخطاب لاستخراج الموجز والفقرات الهامة
-    analyzeLetterBrief(letter).then(setAiBrief).catch(() => {
-        setAiBrief({ summary: "تعذر استخراج الموجز حالياً.", keyPoints: [] });
-    }).finally(() => setLoadingBrief(false));
-    
-    // جلب الردود الذكية إذا كان وارداً
-    if (letter.correspondenceType === CorrespondenceType.INBOUND && letter.status !== LetterStatus.REPLIED) {
-        generateSmartReplies(letter).then(setSmartReplies).finally(() => setLoadingReplies(false));
-    } else { 
-        setSmartReplies([]); 
-        setLoadingReplies(false);
+  const ActionButton: React.FC<{ text: string, onClick: () => void, colorClass: string, disabled?: boolean, isLoading?: boolean, icon?: React.ReactNode }> = ({ text, onClick, colorClass, disabled, isLoading, icon }) => (
+    <button onClick={onClick} disabled={disabled || isLoading} className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg ${colorClass}`}>
+        {isLoading ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-current"></div> : icon}
+        <span>{text}</span>
+    </button>
+  );
+
+  const loadAiInsights = useCallback(async () => {
+    setIsLoadingBrief(true);
+    analyzeLetterBrief(letter).then(setAiBrief).finally(() => setIsLoadingBrief(false));
+
+    if (letter.correspondenceType === CorrespondenceType.INBOUND && letter.status !== LetterStatus.ARCHIVED && letter.status !== LetterStatus.REPLIED) {
+        setIsLoadingSmartReplies(true);
+        generateSmartReplies(letter).then(setSmartReplies).finally(() => setIsLoadingSmartReplies(false));
+    } else {
+        setSmartReplies([]);
     }
   }, [letter.id]);
 
   useEffect(() => {
-    setIsEditing(false); 
+    setIsEditing(false);
     setEditedBody(letter.body);
+    setActiveTab('content');
+    setDiffData(null);
+    setSummary(null);
+    setNewComment('');
+    setPrintableContent(null);
+    setShowProofreadModal(false);
     setAiBrief(null);
-    loadAiContent();
-  }, [letter.id, loadAiContent]);
+    loadAiInsights();
+  }, [letter.id, loadAiInsights]);
 
-  const handleSave = () => {
-    dispatch({ type: 'UPDATE_LETTER', payload: { ...letter, body: sanitizeHTML(editedBody) } });
-    setIsEditing(false); 
+  const handlePrint = () => {
+    setPrintableContent(<PrintableLetter letter={letter} settings={settings} />);
+    setTimeout(() => { window.print(); setPrintableContent(null); }, 300);
+  };
+
+  const handleDownloadDigitalCopy = () => {
+      FileSystemService.downloadLetterAsJson(letter);
+      toast.success("تم تحميل النسخة الرقمية (JSON)");
+  };
+
+  const handleStatusChange = (newStatus: LetterStatus, actionText: string, notes?: string) => {
+    const newHistoryRecord: ApprovalRecord = {
+      action: actionText,
+      date: new Date().toLocaleDateString('ar-SA-u-nu-latn'),
+      notes,
+      userId: state.currentUser?.id,
+      userName: state.currentUser?.name
+    };
+    const updatedLetter = { ...letter, status: newStatus, approvalHistory: [...letter.approvalHistory, newHistoryRecord] };
+    dispatch({ type: 'UPDATE_LETTER', payload: updatedLetter });
+  };
+  
+  const handleSign = () => {
+    const newHistoryRecord: ApprovalRecord = { action: 'تم التوقيع إلكترونياً', date: new Date().toLocaleDateString('ar-SA-u-nu-latn'), userId: state.currentUser?.id, userName: state.currentUser?.name };
+    const updatedLetter = { ...letter, isSigned: true, approvalHistory: [...letter.approvalHistory, newHistoryRecord] };
+    dispatch({ type: 'UPDATE_LETTER', payload: updatedLetter });
+  };
+
+  const handleEdit = () => { setBodyBeforeEdit(letter.body); setIsEditing(true); setActiveTab('content'); };
+
+  const handleSaveEdit = () => {
+    const updatedLetter = { ...letter, body: sanitizeHTML(editedBody), approvalHistory: [...letter.approvalHistory, { action: 'تم تعديل المحتوى', date: new Date().toLocaleDateString('ar-SA-u-nu-latn'), previousBody: bodyBeforeEdit, userId: state.currentUser?.id, userName: state.currentUser?.name }] };
+    dispatch({ type: 'UPDATE_LETTER', payload: updatedLetter });
+    setIsEditing(false);
     toast.success('تم حفظ التعديلات.');
   };
 
-  const onSelectSmartReply = (reply: any) => {
-    dispatch({
-        type: 'SET_REPLY_CONTEXT',
-        payload: {
-            letterId: letter.id,
-            sender: letter.to,
-            recipient: letter.from,
-            subject: `رد على: ${letter.subject}`,
-            mode: 'reply',
-            objective: reply.objective,
-            tone: reply.tone as Tone
+  const handleAddComment = () => {
+    if (!newComment.trim()) return;
+    dispatch({ type: 'ADD_COMMENT', payload: { letterId: letter.id, text: newComment }});
+    setNewComment('');
+  };
+  
+  const handleSummarizeThread = async () => {
+      if (!threadLetters || threadLetters.length === 0) return;
+      setIsSummarizing(true);
+      try {
+          const result = await summarizeCorrespondenceThread(threadLetters);
+          setSummary(result);
+          toast.success("تم تلخيص السلسلة");
+      } catch (e) { console.error(e); } finally { setIsSummarizing(false); }
+  };
+
+  const onReply = (letterToReply: Letter, objective?: string, tone?: string) => {
+    dispatch({type: 'SET_REPLY_CONTEXT', payload: { letterId: letterToReply.id, sender: letterToReply.to, recipient: letterToReply.from, subject: `ردًا على خطابكم بخصوص: ${letterToReply.subject}`, mode: 'reply', objective, tone: (tone as Tone) || Tone.NEUTRAL }});
+    dispatch({type: 'SET_VIEW', payload: View.GENERATOR });
+  };
+
+  const onSupplementary = (letterToSupplement: Letter) => {
+      const isOutbound = letterToSupplement.correspondenceType === CorrespondenceType.OUTBOUND;
+      dispatch({type: 'SET_REPLY_CONTEXT', payload: { letterId: letterToSupplement.id, sender: isOutbound ? letterToSupplement.from : letterToSupplement.to, recipient: isOutbound ? letterToSupplement.to : letterToSupplement.from, subject: `إلحاقاً بخطابنا: ${letterToSupplement.subject}`, mode: 'supplementary' }});
+      dispatch({type: 'SET_VIEW', payload: View.GENERATOR });
+  };
+
+  const handleProofread = async () => {
+      if (!isEditing) handleEdit();
+      setIsProofreading(true);
+      try {
+          const suggestions = await enhanceLetter((isEditing ? editedBody : letter.body).replace(/<[^>]*>?/gm, ' '));
+          setProofreadSuggestions(suggestions);
+          setShowProofreadModal(true);
+      } catch (error) { console.error(error); } finally { setIsProofreading(false); }
+  };
+
+  // @FIX: Added missing handleViewAttachment function
+  const handleViewAttachment = (att: Attachment) => {
+    if (!att.url || att.url === '#') {
+        toast('المعاينة غير متاحة للمرفقات التجريبية.', { icon: 'ℹ️' });
+        return;
+    }
+    try {
+        const blob = dataURLtoBlob(att.url);
+        if (blob) {
+            const fileURL = URL.createObjectURL(blob);
+            window.open(fileURL, '_blank');
         }
-    });
+    } catch (e) {
+        toast.error('حدث خطأ أثناء محاولة فتح المرفق.');
+    }
+  };
+
+  // @FIX: Added missing handleAddAttachment function
+  const handleAddAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      const file = e.target.files[0];
+      const url = await fileToDataURL(file);
+      const newAttachment: Attachment = {
+        id: `att_${Date.now()}`,
+        name: file.name,
+        type: file.type.startsWith('image/') ? 'image' : file.type === 'application/pdf' ? 'pdf' : file.type.includes('word') ? 'word' : 'other',
+        url: url,
+        size: `${(file.size / 1024 / 1024).toFixed(2)} MB`,
+      };
+
+      const updatedLetter = {
+        ...letter,
+        attachments: [...(letter.attachments || []), newAttachment],
+        approvalHistory: [...letter.approvalHistory, { action: `تم إرفاق ملف: ${file.name}`, date: new Date().toLocaleDateString('ar-SA-u-nu-latn'), userId: state.currentUser?.id, userName: state.currentUser?.name }]
+      };
+      dispatch({ type: 'UPDATE_LETTER', payload: updatedLetter });
+      toast.success('تم إرفاق الملف بنجاح.');
+    }
+  };
+
+  const theme = getThemeClasses(settings.primaryColor);
+  const letterComments = useMemo(() => comments.filter(c => c.letterId === letter.id), [comments, letter.id]);
+
+  const threadLetters = useMemo(() => {
+    let root = letter;
+    let parent = allLetters.find(l => l.id === root.referenceId);
+    while(parent) { root = parent; parent = allLetters.find(l => l.id === root.referenceId); }
+    const thread: Letter[] = [];
+    const queue = [root];
+    const visited = new Set<string>();
+    while(queue.length > 0) {
+        const curr = queue.shift()!;
+        if(visited.has(curr.id)) continue;
+        visited.add(curr.id);
+        thread.push(curr);
+        queue.push(...allLetters.filter(l => l.referenceId === curr.id));
+    }
+    return thread;
+  }, [letter, allLetters]);
+
+  const renderActions = () => {
+    const actions = [];
+    if (letter.correspondenceType === CorrespondenceType.INBOUND) {
+        if (letter.status === LetterStatus.RECEIVED) {
+            actions.push(<ActionButton key="requires-reply" text="يستوجب الرد" onClick={() => handleStatusChange(LetterStatus.AWAITING_REPLY, 'تم تحديد المعاملة بأنها تستوجب الرد')} colorClass="text-white bg-indigo-600 hover:bg-indigo-700" icon={<SendIcon className="w-4 h-4" />} />);
+            actions.push(<ActionButton key="no-reply" text="للحفظ" onClick={() => handleStatusChange(LetterStatus.ARCHIVED, 'تم الحفظ للعلم والإحاطة')} colorClass="text-slate-200 bg-slate-600 hover:bg-slate-700" icon={<ArchiveIcon className="w-4 h-4" />} />);
+        } else if (letter.status === LetterStatus.AWAITING_REPLY) {
+            actions.push(<ActionButton key="reply" text="إنشاء الرد" onClick={() => onReply(letter)} colorClass="text-white bg-emerald-600 hover:bg-emerald-700" icon={<SendIcon className="w-4 h-4" />} />);
+        }
+    }
+    actions.push(<ActionButton key="supplementary" text="خطاب إلحاقي" onClick={() => onSupplementary(letter)} colorClass="text-slate-800 bg-cyan-400 hover:bg-cyan-500" />);
+    if (!isEditing && letter.status !== LetterStatus.ARCHIVED) {
+        actions.push(<ActionButton key="edit" text="تعديل المحتوى" onClick={handleEdit} colorClass="text-slate-300 bg-white/10 hover:bg-white/20 border border-white/10" />);
+    }
+    if (!letter.isSigned) actions.push(<ActionButton key="sign" text="توقيع إلكتروني" onClick={handleSign} colorClass="text-white bg-violet-600 hover:bg-violet-700" />);
+    if (letter.correspondenceType === CorrespondenceType.OUTBOUND && letter.status !== LetterStatus.SENT && letter.status !== LetterStatus.ARCHIVED) {
+        actions.push(<ActionButton key="send" text="إرسال الخطاب" onClick={() => handleStatusChange(LetterStatus.SENT, 'تم الإرسال')} disabled={!letter.isSigned} colorClass={`text-white ${theme.bg} ${theme.hoverBg}`} />);
+    }
+    return <div className="flex flex-wrap items-center gap-3">{actions}</div>;
   };
 
   return (
-    <div className="p-4 lg:p-8 space-y-8 animate-in fade-in duration-500">
-      {/* Header Section */}
-      <div className="flex flex-col md:flex-row justify-between items-start gap-4 border-b border-white/5 pb-6">
-        <div className="space-y-1">
-            <div className="flex items-center gap-3">
-                <span className="text-[10px] font-black text-slate-500 tracking-widest uppercase bg-white/5 px-2 py-0.5 rounded">معاملة نشطة</span>
-                {getStatusChip(letter.status)}
-            </div>
-            <h1 className="text-2xl font-black text-white leading-tight mt-2">{letter.subject}</h1>
-        </div>
-        <div className="flex gap-2 no-print">
-            {!isEditing && (
-                <button onClick={() => setIsEditing(true)} className="px-5 py-2.5 bg-white/5 border border-white/10 rounded-xl text-xs font-bold hover:bg-white/10 transition-all text-slate-300">
-                    تعديل المتن
-                </button>
-            )}
-            <button onClick={() => window.print()} className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl text-xs font-bold hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-500/20 flex items-center gap-2">
-                <PrinterIcon className="w-4 h-4" /> طباعة
-            </button>
-        </div>
+    <>
+    {printRoot && printableContent && createPortal(printableContent, printRoot)}
+    {showProofreadModal && <ProofreadModal suggestions={proofreadSuggestions} onClose={() => setShowProofreadModal(false)} onApplyAll={(s) => { let b = editedBody; s.forEach(x => b = b.replace(x.original_part, x.suggested_improvement)); setEditedBody(b); setShowProofreadModal(false); }} onApplyOne={(s) => setEditedBody(prev => prev.replace(s.original_part, s.suggested_improvement))} />}
+
+    <div className="p-4 lg:p-6 bg-transparent space-y-8 animate-in fade-in duration-500 pb-20">
+      <div className="bg-indigo-500/5 border border-indigo-500/10 p-6 rounded-3xl relative overflow-hidden group">
+          <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500 opacity-60"></div>
+          <div className="flex items-center justify-between mb-5">
+              <div className="flex items-center gap-3">
+                  <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400 shadow-inner"><BotIcon className="w-6 h-6" /></div>
+                  <h3 className="text-lg font-black text-white">الموجز التنفيذي للمساعد الذكي</h3>
+              </div>
+              {isLoadingBrief && <div className="animate-spin h-5 w-5 border-2 border-indigo-500 border-b-transparent rounded-full"></div>}
+          </div>
+          {isLoadingBrief ? <div className="space-y-4 animate-pulse"><div className="h-4 bg-white/5 rounded w-3/4"></div><div className="h-4 bg-white/5 rounded w-1/2"></div></div> : aiBrief ? (
+              <div className="space-y-6">
+                  <div className="bg-black/30 p-5 rounded-2xl border border-white/5 shadow-inner">
+                      <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">جوهر المعاملة</p>
+                      <p className="text-sm text-slate-200 leading-relaxed font-bold">{aiBrief.summary}</p>
+                  </div>
+                  {aiBrief.keyPoints.length > 0 && (
+                      <div>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-1">نقاط تستوجب المعالجة:</p>
+                          <ul className="space-y-3">
+                              {aiBrief.keyPoints.map((point, i) => (
+                                  <li key={i} className="flex items-start gap-3 text-[13px] text-slate-300 font-bold group/item"><span className="mt-1.5 w-2 h-2 bg-indigo-500 rounded-full shrink-0 group-hover/item:scale-125 transition-transform shadow-[0_0_8px_rgba(99,102,241,0.5)]"></span><span className="leading-relaxed">{point}</span></li>
+                              ))}
+                          </ul>
+                      </div>
+                  )}
+              </div>
+          ) : <p className="text-xs text-slate-500 font-bold">فشل في استرداد التحليل التلقائي للمحتوى.</p>}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
-          <div className="lg:col-span-3 space-y-8">
-            
-            {/* AI Analysis Card (The Briefing) */}
-            <div className="bg-indigo-500/5 border border-indigo-500/10 p-6 rounded-3xl relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500 opacity-50"></div>
-                <div className="flex items-center justify-between mb-5">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><BotIcon className="w-6 h-6" /></div>
-                        <h3 className="text-lg font-black text-white">التحليل السياقي للمساعد الذكي</h3>
-                    </div>
-                    {loadingBrief && <div className="animate-spin h-4 w-4 border-2 border-indigo-500 border-b-transparent rounded-full"></div>}
-                </div>
+      <div className="glass-card p-6 border border-white/10 shadow-lg"><WorkflowTracker letter={letter} settings={settings} /></div>
 
-                {loadingBrief ? (
-                    <div className="space-y-4 animate-pulse">
-                        <div className="h-4 bg-white/5 rounded w-3/4"></div>
-                        <div className="h-4 bg-white/5 rounded w-1/2"></div>
-                        <div className="h-4 bg-white/5 rounded w-2/3"></div>
-                    </div>
-                ) : aiBrief ? (
-                    <div className="space-y-6">
-                        <div className="bg-black/20 p-5 rounded-2xl border border-white/5">
-                            <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">الملخص التنفيذي للمتن</p>
-                            <p className="text-sm text-slate-200 leading-relaxed font-bold">{aiBrief.summary}</p>
-                        </div>
-                        {aiBrief.keyPoints.length > 0 && (
-                            <div>
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-1">نقاط جوهرية تتطلب رداً أو إجراءً:</p>
-                                <ul className="space-y-3">
-                                    {aiBrief.keyPoints.map((point, i) => (
-                                        <li key={i} className="flex items-start gap-3 text-[13px] text-slate-300 font-bold group/item">
-                                            <span className="mt-1.5 w-2 h-2 bg-indigo-500 rounded-full shrink-0 group-hover/item:scale-125 transition-transform shadow-[0_0_8px_rgba(99,102,241,0.5)]"></span>
-                                            <span className="leading-relaxed">{point}</span>
-                                        </li>
-                                    ))}
-                                </ul>
+      {letter.correspondenceType === CorrespondenceType.INBOUND && letter.status !== LetterStatus.ARCHIVED && letter.status !== LetterStatus.REPLIED && (
+          <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
+              <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3"><SparklesIcon className="w-6 h-6 text-indigo-400" /><h3 className="text-xl font-black text-white">مسارات الرد الاستراتيجية</h3></div>
+                  {isLoadingSmartReplies && <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold"><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>جاري التحليل...</div>}
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {smartReplies.length > 0 ? smartReplies.map((reply, i) => (
+                      <button key={i} onClick={() => onReply(letter, reply.objective, reply.tone.toString())} className={`p-5 rounded-2xl border text-right flex flex-col gap-3 transition-all group/btn shadow-lg hover:-translate-y-1 ${reply.type === 'positive' ? 'bg-emerald-500/10 border-emerald-500/20 hover:border-emerald-500/50' : reply.type === 'negative' ? 'bg-rose-500/10 border-rose-500/20 hover:border-rose-500/50' : 'bg-indigo-500/5 border-white/10 hover:border-indigo-500/50'}`}><div className="flex items-center justify-between"><span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${reply.type === 'positive' ? 'bg-emerald-500/20 text-emerald-400' : reply.type === 'negative' ? 'bg-rose-500/20 text-rose-400' : 'bg-indigo-500/20 text-indigo-300'}`}>{reply.title}</span><SparklesIcon className="w-3 h-3 text-white/20 group-hover/btn:text-white/60 transition-colors" /></div><p className="text-sm font-bold text-white leading-relaxed line-clamp-3 group-hover/btn:line-clamp-none transition-all">{reply.objective}</p><div className="mt-auto pt-3 border-t border-white/5 flex items-center justify-between"><span className="text-[10px] text-slate-500 font-black">النبرة: {reply.tone}</span><span className="text-[10px] text-indigo-400 font-black opacity-0 group-hover/btn:opacity-100 transition-opacity">استخدام المسار ←</span></div></button>
+                  )) : isLoadingSmartReplies ? [1,2,3].map(i => <div key={i} className="h-40 bg-white/5 rounded-2xl animate-pulse border border-white/5"></div>) : <div className="col-span-3 py-6 text-center text-slate-500 font-bold border border-dashed border-white/10 rounded-2xl">لا توجد اقتراحات رد متاحة حالياً.</div>}
+              </div>
+          </div>
+      )}
+
+      {threadLetters && threadLetters.length > 1 && (
+        <div className="glass-card border border-white/10 p-5 overflow-hidden">
+             <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-black text-white flex items-center gap-2"><LinkIcon className="w-5 h-5 text-indigo-400" />سلسلة المراسلات المرتبطة</h3><ActionButton text={isSummarizing ? "جاري التلخيص..." : "تلخيص السلسلة"} onClick={handleSummarizeThread} colorClass="text-xs px-3 py-1.5 bg-white/5 text-slate-300 border border-white/5" icon={<FileTextIcon className="w-4 h-4"/>} /></div>
+            <div className="space-y-3">{threadLetters.map((tl) => (<div key={tl.id} onClick={() => tl.id !== letter.id && dispatch({ type: 'SELECT_LETTER', payload: tl.id })} className={`p-4 rounded-xl border transition-all cursor-pointer ${tl.id === letter.id ? 'bg-indigo-500/10 border-indigo-500/40 shadow-inner' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}><div className="flex items-center justify-between mb-1"><span className="text-[10px] font-black text-slate-500">{tl.date}</span>{getStatusChip(tl.status)}</div><p className={`text-sm font-bold ${tl.id === letter.id ? 'text-white' : 'text-slate-300'}`}>{tl.subject}</p></div>))}</div>
+            {summary && <div className="mt-6 p-5 bg-slate-950/80 rounded-xl border border-indigo-500/30 text-indigo-100 text-sm leading-relaxed shadow-2xl animate-in zoom-in-95" dangerouslySetInnerHTML={{ __html: summary.replace(/\n/g, '<br/>') }} />}
+        </div>
+      )}
+
+      <div className="py-6 border-b border-white/10">
+          <h3 className="text-lg font-black text-slate-300 mb-4">تفاصيل المعاملة</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+              <DetailItem label="المرسل" value={letter.from} /><DetailItem label={letter.correspondenceType === CorrespondenceType.INBOUND ? "التصنيف الإداري" : "إلى"} value={letter.to} /><DetailItem label="التاريخ" value={letter.date} /><DetailItem label="رقم المعاملة" value={letter.internalRefNumber || '---'} /><DetailItem label="الأهمية" children={getPriorityChip(letter.priority || PriorityLevel.NORMAL)} /><DetailItem label="الحالة" children={getStatusChip(letter.status)} />
+          </div>
+      </div>
+
+      <div className="my-6 p-4 bg-white/5 rounded-xl border border-white/5 no-print"><h3 className="text-lg font-bold text-slate-300 mb-4">الإجراءات المتاحة</h3>{renderActions()}</div>
+      
+        <div className="border-b border-white/10 mb-6"><nav className="-mb-px flex space-x-6 space-x-reverse"><button onClick={() => setActiveTab('content')} className={`whitespace-nowrap py-4 px-1 border-b-4 font-black text-sm ${activeTab === 'content' ? theme.tabActive : theme.tabInactive}`}>المحتوى والمرفقات</button><button onClick={() => setActiveTab('comments')} className={`whitespace-nowrap py-4 px-1 border-b-4 font-black text-sm ${activeTab === 'comments' ? theme.tabActive : theme.tabInactive}`}>الملاحظات والتعليقات</button><button onClick={() => setActiveTab('history')} className={`whitespace-nowrap py-4 px-1 border-b-4 font-black text-sm ${activeTab === 'history' ? theme.tabActive : theme.tabInactive}`}>سجل المسار الزمني</button></nav></div>
+
+        <div>
+            {activeTab === 'content' && (
+                <div className="space-y-8">
+                    <div>
+                        <h3 className="text-xl font-black text-slate-100 mb-4">نص الشرح / الخطاب</h3>
+                        {isEditing ? (
+                            <div className="animate-in fade-in duration-300">
+                                <RichTextEditor value={editedBody} onChange={setEditedBody} ringColor={theme.ring} />
+                                <div className="mt-4 flex items-center justify-end gap-3 bg-slate-800/50 p-4 rounded-xl border border-white/5 shadow-inner"><button onClick={() => setIsEditing(false)} className="px-6 py-2 text-sm font-bold text-slate-300 hover:text-white transition-colors">إلغاء</button><button onClick={handleSaveEdit} className={`px-8 py-2 text-sm font-black text-white ${theme.bg} rounded-lg shadow-lg`}>حفظ واعتماد التعديلات</button></div>
                             </div>
+                        ) : (
+                            <div className="rounded-2xl border border-white/10 bg-white/95 text-black shadow-2xl overflow-hidden"><div className="p-8 md:p-12"><div className="prose max-w-none prose-slate font-bold text-slate-900 text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: sanitizeHTML(letter.body) }} />{letter.isSigned && (<div className="mt-12 pt-6 border-t border-dashed border-slate-300 flex items-center justify-between"><p className="text-base text-emerald-800 font-black flex items-center gap-2"><CheckCircleIcon className="w-5 h-5" /><span>تم التوقيع والمصادقة إلكترونياً</span></p><span className="text-[10px] text-slate-400 font-mono">HASH_{letter.id.substring(0,8)}</span></div>)}</div></div>
                         )}
                     </div>
-                ) : (
-                    <p className="text-xs text-slate-500 font-bold">انقر على "تحديث" لإعادة تشغيل التحليل التلقائي للمحتوى.</p>
-                )}
-            </div>
-
-            {/* Document Body */}
-            {isEditing ? (
-                <div className="space-y-4 animate-in fade-in duration-300">
-                    <RichTextEditor value={editedBody} onChange={setEditedBody} ringColor={theme.ring} minHeight="min-h-[500px]" />
-                    <div className="flex justify-end gap-3 p-4 bg-slate-900/50 rounded-2xl border border-white/5">
-                        <button onClick={() => setIsEditing(false)} className="px-6 py-2 text-sm font-bold text-slate-500 hover:text-slate-300 transition-colors">إلغاء</button>
-                        <button onClick={handleSave} className="px-10 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold">حفظ التغييرات</button>
-                    </div>
-                </div>
-            ) : (
-                <div className="bg-white rounded-3xl shadow-2xl overflow-hidden min-h-[700px] border border-slate-200 relative">
-                    <div className="absolute top-6 left-6 no-print">
-                         <span className="text-[10px] bg-slate-100 text-slate-400 font-black px-3 py-1 rounded-full border border-slate-200">الوثيقة الرقمية المعتمدة</span>
-                    </div>
-                    <div className="p-12 md:p-20">
-                        <div className="prose max-w-none prose-slate font-bold text-slate-900 text-lg leading-[2] text-justify" dangerouslySetInnerHTML={{ __html: sanitizeHTML(letter.body) }} />
-                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8"><div className="space-y-4"><h3 className="text-xl font-black text-slate-100">الملفات المرفقة</h3><div className="bg-white/5 p-5 rounded-2xl border border-white/10 shadow-inner">{(!letter.attachments || letter.attachments.length === 0) ? <div className="text-center py-6"><p className="text-sm font-bold text-slate-500">لا توجد مرفقات لهذه المعاملة.</p></div> : <ul className="space-y-3">{letter.attachments?.map(att => (<li key={att.id}><div className="w-full text-right flex items-center gap-3 p-4 bg-slate-800/60 rounded-xl border border-white/10 hover:border-indigo-500/50 hover:shadow-xl transition-all group"><div className="flex-grow overflow-hidden"><button onClick={() => handleViewAttachment(att)} className="font-black text-base truncate block text-slate-200 group-hover:text-white transition-colors">{att.name}</button><span className="text-[10px] text-slate-500 font-bold">{att.size}</span></div><div className="flex items-center gap-2 flex-shrink-0"><a href={att.url} download={att.name} className="p-2 text-slate-400 hover:text-white font-bold rounded-lg hover:bg-white/10 transition-colors">تنزيل</a></div></div></li>))}</ul>}<div className="mt-4 pt-4 border-t border-white/5"><input type="file" ref={attachmentInputRef} onChange={handleAddAttachment} className="hidden" /><button onClick={() => attachmentInputRef.current?.click()} className="w-full text-sm font-black flex items-center justify-center gap-2 px-4 py-3 text-slate-400 bg-white/5 rounded-xl hover:bg-white/10 border border-white/5 transition-all">إضافة مرفق جديد</button></div></div></div><div className='no-print space-y-4'><h3 className="text-xl font-black text-slate-100">التصدير والطباعة</h3><div className="bg-white/5 p-5 rounded-2xl border border-white/10 space-y-3 shadow-inner"><ActionButton text="تحميل نسخة رقمية (JSON)" onClick={handleDownloadDigitalCopy} colorClass="w-full justify-center text-emerald-400 bg-emerald-950/20 border border-emerald-500/30" icon={<DownloadIcon className="w-4 h-4"/>} /><ActionButton text="طباعة المستند" onClick={handlePrint} colorClass="w-full justify-center text-white bg-indigo-600 hover:bg-indigo-500" icon={<PrinterIcon className="w-4 h-4" />} /></div></div></div>
                 </div>
             )}
-          </div>
-
-          {/* Sidebar: Metadata & Smart Replies */}
-          <div className="space-y-6 no-print">
-            <div className="glass-card p-6 space-y-6 border-white/5 bg-slate-900/40">
-                <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5 pb-3">بطاقة بيانات المستند</h3>
-                
-                <div className="space-y-5">
-                    <div className="space-y-2">
-                        <p className="text-[10px] text-slate-500 font-black uppercase">أطراف المعاملة</p>
-                        <div className="p-3.5 bg-black/30 rounded-2xl space-y-2 border border-white/5">
-                            <div>
-                                <span className="text-[9px] text-indigo-400 font-black uppercase block">المرسل:</span>
-                                <p className="text-[13px] font-bold text-white">{letter.from}</p>
-                            </div>
-                            <div className="h-px bg-white/5 w-1/2"></div>
-                            <div>
-                                <span className="text-[9px] text-emerald-400 font-black uppercase block">المستلم:</span>
-                                <p className="text-[13px] font-bold text-white">{letter.to}</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                            <p className="text-[10px] text-slate-500 font-black uppercase">تاريخ القيد</p>
-                            <p className="text-sm font-mono font-bold text-slate-200">{letter.date}</p>
-                        </div>
-                        <div className="space-y-1">
-                            <p className="text-[10px] text-slate-500 font-black uppercase">درجة الأهمية</p>
-                            <div className="scale-90 origin-right">{getPriorityChip(letter.priority || PriorityLevel.NORMAL)}</div>
-                        </div>
-                    </div>
-
-                    <div className="pt-4 border-t border-white/5 space-y-3">
-                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest">المعرفات الرقمية</p>
-                        <div className="space-y-2">
-                            <div className="flex justify-between items-center bg-black/20 p-3 rounded-xl border border-white/5 group">
-                                <span className="text-[10px] text-slate-400 font-bold">رقم القيد الداخلي:</span>
-                                <span className="text-[13px] font-mono text-indigo-400 font-black group-hover:scale-110 transition-transform">#{letter.internalRefNumber}</span>
-                            </div>
-                            {letter.externalRefNumber && (
-                                <div className="flex justify-between items-center bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <span className="text-[10px] text-slate-400 font-bold">رقم الصادر الخارجي:</span>
-                                    <span className="text-[12px] font-mono text-slate-200 font-bold">{letter.externalRefNumber}</span>
-                                </div>
-                            )}
-                            <div className="flex justify-between items-center bg-black/20 p-3 rounded-xl border border-white/5">
-                                <span className="text-[10px] text-slate-400 font-bold">مستوى السرية:</span>
-                                <div className="scale-75 origin-left">{getConfidentialityChip(letter.confidentiality || ConfidentialityLevel.NORMAL)}</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* Smart Reply Paths */}
-            {letter.correspondenceType === CorrespondenceType.INBOUND && (
-                <div className="glass-card p-6 space-y-4 bg-indigo-950/20 border-indigo-500/20 rounded-[2rem] shadow-2xl">
-                    <div className="flex items-center gap-3">
-                        <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400 shadow-inner"><SparklesIcon className="w-4 h-4" /></div>
-                        <h3 className="text-[11px] font-black text-indigo-400 uppercase tracking-widest">مسارات الرد الذكي</h3>
-                    </div>
-                    {loadingReplies ? (
-                        <div className="space-y-3">
-                            {[1,2,3].map(i => <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse"></div>)}
-                        </div>
-                    ) : smartReplies.length > 0 ? (
-                        <div className="flex flex-col gap-3">
-                            {smartReplies.map((r, i) => (
-                                <button 
-                                    key={i} 
-                                    onClick={() => onSelectSmartReply(r)}
-                                    className="p-4 rounded-2xl bg-white/5 border border-white/5 text-right hover:border-indigo-500/50 hover:bg-indigo-500/5 transition-all group flex flex-col gap-1 shadow-sm active:scale-95"
-                                >
-                                    <span className="block text-[9px] font-black text-indigo-400 opacity-60 mb-1 uppercase tracking-widest group-hover:opacity-100">{r.title}</span>
-                                    <span className="text-[13px] font-bold text-slate-200 leading-snug line-clamp-2">{r.objective}</span>
-                                </button>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-[10px] text-slate-500 font-black text-center py-4 bg-white/5 rounded-2xl border border-dashed border-white/5">لا توجد مسارات رد مقترحة حالياً.</p>
-                    )}
-                </div>
+            {activeTab === 'comments' && (
+                <div className="max-w-3xl space-y-6">{letterComments.length > 0 ? <ul className="space-y-6">{letterComments.map(comment => (<li key={comment.id} className="flex items-start gap-4"><div className="flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white bg-indigo-600/30 border border-indigo-500/30">خ</div><div className="flex-grow bg-white/5 p-5 rounded-2xl border border-white/10 shadow-lg"><div className="flex justify-between items-center mb-2"><p className="font-black text-sm text-slate-200">نظام خطابي</p><p className="text-[10px] font-bold text-slate-500">{comment.createdAt}</p></div><p className="text-base font-medium text-slate-300 whitespace-pre-wrap leading-relaxed">{comment.text}</p></div></li>))}</ul> : <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10"><p className="text-slate-500 font-bold">لا توجد ملاحظات على هذه المعاملة بعد.</p></div>}<div className="relative mt-8"><textarea rows={4} value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="أضف ملاحظة توجيهية..." className="w-full px-5 py-4 bg-slate-900/60 text-white border border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 text-base font-medium placeholder-slate-500 shadow-inner" /><div className="mt-3 text-left"><button onClick={handleAddComment} className={`px-8 py-2.5 text-sm font-black text-white rounded-xl shadow-xl transition-all active:scale-95 ${theme.bg}`} disabled={!newComment.trim()}>إرسال الملاحظة</button></div></div></div>
             )}
-          </div>
+            {activeTab === 'history' && (
+                <div className="max-w-4xl py-6"><ul className="space-y-8 border-r-2 border-slate-700 pr-8 relative">{letter.approvalHistory.map((record, index) => (<li key={index} className="flex items-start gap-6 group"><div className="absolute -right-[0.55rem] top-1 w-4 h-4 rounded-full bg-slate-950 border-2 border-indigo-500 group-hover:scale-125 transition-transform"></div><div className="flex-grow bg-white/5 p-5 rounded-2xl border border-white/5 hover:border-indigo-500/20 transition-all"><p className="font-black text-lg text-slate-200">{record.action}</p><div className="flex items-center gap-4 mt-1"><p className="text-[10px] font-black text-slate-500 flex items-center gap-1"><ClockIcon className="w-3 h-3" />{record.date}</p>{record.userName && <p className="text-[10px] font-black text-indigo-400">بواسطة: {record.userName}</p>}</div>{record.notes && <div className="mt-4 text-sm font-medium text-slate-300 bg-white/5 p-4 rounded-xl border border-white/10 leading-relaxed"><strong className="text-indigo-300">ملاحظات:</strong> {record.notes}</div>}{record.previousBody && <button onClick={() => setDiffData({ old: record.previousBody || '', new: letter.body })} className="text-xs font-black text-indigo-400 hover:text-indigo-300 mt-4 flex items-center gap-1">عرض مقارنة التغييرات ←</button>}</div></li>))}</ul></div>
+            )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }

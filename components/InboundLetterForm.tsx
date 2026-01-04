@@ -1,180 +1,175 @@
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
-import { LetterType, PriorityLevel, ConfidentialityLevel, InboundLetterFormState } from '../types';
+import { Attachment, PriorityLevel, ConfidentialityLevel, LetterType, InboundLetterFormState, CorrespondenceType } from '../types';
 import { extractDetailsFromLetterImage } from '../services/geminiService';
+import Tiff from 'tiff.js';
 import { useApp } from '../App';
 import { getThemeClasses } from './utils';
 import MultiSelectCombobox from './MultiSelectCombobox';
-import { ScanTextIcon, CheckCircleIcon, SparklesIcon } from './icons';
+import { LinkIcon } from './icons';
 
-const Label: React.FC<{ children: React.ReactNode }> = ({ children }) => <label className="block text-[11px] font-bold text-slate-400 mb-1.5 uppercase tracking-wide">{children}</label>;
+const InputField = ({ label, value, onChange, placeholder, type = 'text', ringColor, disabled = false, required = false }: {label: string, value: string | number, onChange: (e: React.ChangeEvent<HTMLInputElement>) => void, placeholder?: string, type?: string, ringColor: string, disabled?: boolean, required?: boolean}) => (
+    <div>
+      <label className="block text-sm font-bold text-slate-300 mb-1">{label}</label>
+      <input 
+        type={type}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        required={required}
+        className={`block w-full px-3 py-2 bg-slate-950/50 text-white border border-slate-700/50 rounded-md shadow-inner placeholder-slate-500 focus:outline-none focus:ring-2 ${ringColor} sm:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all`}
+      />
+    </div>
+);
 
-export default function InboundLetterForm() {
+const TextAreaField = ({ label, value, onChange, placeholder, rows, ringColor, disabled=false }: {label: string, value: string, onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void, placeholder?: string, rows?: number, ringColor: string, disabled?: boolean}) => (
+    <div>
+      <label className="block text-sm font-bold text-slate-300 mb-1">{label}</label>
+      <textarea
+        rows={rows || 3}
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        disabled={disabled}
+        className={`block w-full px-3 py-2 bg-slate-950/50 text-white border border-slate-700/50 rounded-md shadow-inner placeholder-slate-500 focus:outline-none focus:ring-2 ${ringColor} sm:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all`}
+      ></textarea>
+    </div>
+);
+
+// @FIX: Added required prop to SelectField component
+const SelectField = <T extends string>({ label, value, onChange, options, ringColor, disabled=false, required=false }: {label: string, value: T, onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void, options: object | string[], ringColor: string, disabled?: boolean, required?: boolean}) => (
+    <div>
+      <label className="block text-sm font-bold text-slate-300 mb-1">{label}</label>
+      <select 
+        value={value}
+        onChange={onChange}
+        disabled={disabled}
+        required={required}
+        className={`block w-full px-3 py-2 bg-slate-950/50 text-white border border-slate-700/50 rounded-md shadow-inner focus:outline-none focus:ring-2 ${ringColor} sm:text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-all`}
+      >
+        {Array.isArray(options) 
+          ? options.map(opt => <option key={opt} value={opt} className="bg-slate-900">{opt}</option>)
+          : Object.entries(options).filter(([key]) => isNaN(Number(key))).map(([key, val]) => <option key={key} value={val} className="bg-slate-900">{val}</option>)}
+      </select>
+    </div>
+);
+
+const fileToDataURL = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = error => reject(error);
+        reader.readAsDataURL(file);
+    });
+};
+
+export default function InboundLetterForm(): React.ReactNode {
   const { state, dispatch } = useApp();
   const { companySettings: settings, letters, inboundLetterFormState } = state;
-  const { subject, from, to, cc, dateReceived, letterType, category, attachments, summary, externalRefNumber, priority, confidentiality, completionDays } = inboundLetterFormState;
+
+  const {
+      subject, from, to, cc, dateReceived, letterType, category, attachments, summary, referenceId,
+      externalRefNumber, priority, confidentiality, completionDays, notes
+  } = inboundLetterFormState;
 
   const [isScanning, setIsScanning] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
   const theme = getThemeClasses(settings.primaryColor);
   const aiScanInputRef = useRef<HTMLInputElement>(null);
+  const allRecipients = [...settings.departments, ...(settings.externalEntities || [])];
 
-  const updateState = (p: Partial<InboundLetterFormState>) => dispatch({ type: 'UPDATE_INBOUND_FORM_STATE', payload: p });
-
-  const handleAiScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (!file) return;
-    
-    // التحقق من الحجم - إذا كان كبيراً جداً قد نبطئ المعالجة
-    if (file.size > 10 * 1024 * 1024) {
-        toast.error("حجم الملف كبير جداً. يرجى اختيار ملف أقل من 10 ميجابايت.");
-        return;
-    }
-
-    setIsScanning(true);
-    const toastId = toast.loading("جاري التحليل الفوري للوثيقة...");
-    
-    try {
-        const reader = new FileReader();
-        const dataUrl = await new Promise<string>((res) => { 
-            reader.onload = () => res(reader.result as string); 
-            reader.readAsDataURL(file); 
-        });
-        
-        const [header, data] = dataUrl.split(',');
-        const mime = header.match(/:(.*?);/)?.[1] || file.type;
-        
-        // إرسال البيانات المباشرة للمحرك
-        const res = await extractDetailsFromLetterImage(
-            data, 
-            mime, 
-            settings.departments, 
-            Object.values(LetterType), 
-            Object.values(PriorityLevel), 
-            Object.values(ConfidentialityLevel), 
-            [], 
-            letters
-        );
-
-        updateState({ 
-            subject: res.subject || '', 
-            from: res.from || '', 
-            to: res.to || '', 
-            externalRefNumber: res.externalRefNumber || '', 
-            summary: res.summary || '', 
-            category: res.category || '', 
-            dateReceived: res.date || new Date().toISOString().split('T')[0]
-        });
-        
-        toast.success("تم استخلاص البيانات فوراً!", { id: toastId });
-    } catch(err: any) { 
-        console.error(err);
-        toast.error(`فشل التحليل: ${err.message || "تأكد من وضوح الصورة"}`, { id: toastId }); 
-    } finally { 
-        setIsScanning(false); 
-        if (e.target) e.target.value = ''; 
-    }
+  const updateState = (payload: Partial<InboundLetterFormState>) => {
+      dispatch({ type: 'UPDATE_INBOUND_FORM_STATE', payload });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const filteredLetters = useMemo(() => {
+      if (!searchTerm) return [];
+      const lower = searchTerm.toLowerCase();
+      return letters.filter(l => 
+          l.subject.toLowerCase().includes(lower) || 
+          (l.internalRefNumber || '').toLowerCase().includes(lower) ||
+          (l.externalRefNumber || '').toLowerCase().includes(lower)
+      ).slice(0, 5);
+  }, [searchTerm, letters]);
+
+  const selectedParentLetter = useMemo(() => letters.find(l => l.id === referenceId), [letters, referenceId]);
+
+  const handleAiScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsScanning(true);
+    try {
+        let base64Data: string;
+        let mimeType: string;
+        
+        const dataUrl = await fileToDataURL(file);
+        const parts = dataUrl.split(',');
+        base64Data = parts[parts.length - 1];
+        mimeType = parts[0].match(/:(.*?);/)?.[1] || file.type;
+
+        if (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
+            const arrayBuffer = await file.arrayBuffer();
+            const tiff = new Tiff({ buffer: arrayBuffer });
+            const canvas = tiff.toCanvas();
+            if (canvas) {
+                const converted = canvas.toDataURL('image/png');
+                base64Data = converted.split(',')[1];
+                mimeType = 'image/png';
+            }
+        }
+
+        const extractedData = await extractDetailsFromLetterImage(base64Data, mimeType, settings.departments, Object.values(LetterType) as string[], Object.values(PriorityLevel) as string[], Object.values(ConfidentialityLevel) as string[], [], letters.map(l => ({ id: l.id, subject: l.subject, internalRefNumber: l.internalRefNumber, externalRefNumber: l.externalRefNumber, date: l.date })));
+        
+        const updates: Partial<InboundLetterFormState> = {};
+        if (extractedData.subject) updates.subject = extractedData.subject;
+        if (extractedData.from) updates.from = extractedData.from;
+        if (extractedData.to) updates.to = extractedData.to; 
+        if (extractedData.externalRefNumber) updates.externalRefNumber = extractedData.externalRefNumber;
+        if (extractedData.letterType && Object.values(LetterType).includes(extractedData.letterType as any)) updates.letterType = extractedData.letterType as LetterType;
+        if (extractedData.category) updates.category = extractedData.category;
+        if (extractedData.summary) updates.summary = extractedData.summary;
+        if (extractedData.priority) updates.priority = extractedData.priority as PriorityLevel;
+        if (extractedData.confidentiality) updates.confidentiality = extractedData.confidentiality as ConfidentialityLevel;
+        if (extractedData.date && !isNaN(new Date(extractedData.date).getTime())) updates.dateReceived = extractedData.date;
+        
+        updateState(updates);
+        toast.success("تم استخلاص البيانات بنجاح!");
+    } catch(error) { toast.error("حدث خطأ أثناء معالجة الصورة."); } finally { setIsScanning(false); if (e.target) e.target.value = ''; }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!subject.trim() || !from.trim() || !to.trim()) { toast.error('الحقول الأساسية مطلوبة.'); return; }
-    dispatch({ type: 'REGISTER_INBOUND', payload: { ...inboundLetterFormState, date: dateReceived, attachments: [] } as any });
-    toast.success("تم تسجيل المعاملة بنجاح.");
-    dispatch({ type: 'RESET_INBOUND_FORM_STATE' });
+    if (!subject.trim() || !from.trim() || !to.trim() || attachments.length === 0) { toast.error('الرجاء تعبئة الحقول الإلزامية وإرفاق ملف.'); return; }
+    const newAttachments: Attachment[] = await Promise.all(attachments.map(async (file, index) => ({ id: `in_att_${Date.now()}_${index}`, name: file.name, type: file.type.startsWith('image/') ? 'image' : file.type === 'application/pdf' ? 'pdf' : 'other' as any, url: await fileToDataURL(file), size: `${(file.size / 1024 / 1024).toFixed(2)} MB` })));
+    dispatch({ type: 'REGISTER_INBOUND', payload: { subject, from, to, type: letterType, cc, date: dateReceived, attachments: newAttachments, externalRefNumber, priority, confidentiality, completionDays: completionDays ? Number(completionDays) : undefined, notes, category, summary, referenceId } as any });
+    toast.success("تم تسجيل الوارد بنجاح.");
   };
 
   return (
-    <div className="max-w-4xl mx-auto pb-10">
-      <div className="flex justify-between items-center mb-6">
-        <h2 className="text-xl font-bold text-white tracking-tight">تسجيل وارد جديد</h2>
-        <button 
-            onClick={() => aiScanInputRef.current?.click()} 
-            disabled={isScanning} 
-            className={`flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-bold transition-all shadow-xl active:scale-95 ${isScanning ? 'bg-slate-700' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-500/20'}`}
-        >
-            {isScanning ? (
-                <div className="flex items-center gap-2">
-                    <div className="animate-spin h-4 w-4 border-2 border-white/20 border-b-white rounded-full"></div>
-                    <span>جاري القراءة...</span>
-                </div>
-            ) : (
-                <>
-                    <SparklesIcon className="w-4 h-4" />
-                    <span>مسح ذكي سريع</span>
-                </>
-            )}
-        </button>
-        <input type="file" ref={aiScanInputRef} onChange={handleAiScan} className="hidden" accept="image/*,application/pdf" />
-      </div>
-      
-      <div className="glass-card p-8 border-white/5 bg-slate-900/40 relative overflow-hidden">
-        {isScanning && (
-            <div className="absolute inset-0 bg-indigo-500/5 backdrop-blur-[2px] z-10 flex flex-col items-center justify-center animate-in fade-in duration-500">
-                <div className="p-4 bg-slate-900 rounded-2xl border border-white/10 shadow-2xl flex flex-col items-center gap-3">
-                    <div className="animate-bounce p-3 bg-indigo-500/20 rounded-full">
-                        <ScanTextIcon className="w-8 h-8 text-indigo-400" />
-                    </div>
-                    <p className="text-sm font-bold text-indigo-300">يتم الآن استخراج النصوص والبيانات...</p>
-                </div>
-            </div>
-        )}
-
+    <div className="max-w-4xl mx-auto">
+      <div className="flex justify-between items-center mb-1"><h2 className="text-2xl font-bold text-white">تسجيل خطاب وارد جديد</h2><button onClick={() => dispatch({ type: 'RESET_INBOUND_FORM_STATE' })} className="text-xs text-rose-300 font-bold border border-rose-500/30 p-2 rounded">مسح النموذج</button></div>
+      <div className="bg-slate-900/60 p-6 rounded-lg shadow-lg border border-white/10 mt-6">
+        <div className="flex justify-center mb-6"><button onClick={() => aiScanInputRef.current?.click()} disabled={isScanning} className={`px-8 py-4 text-white rounded-lg transition-all ${isScanning ? 'bg-slate-500' : `${theme.bg} hover:brightness-110 shadow-lg`} font-bold`}>{isScanning ? "جاري المسح الضوئي..." : "المسح الضوئي الذكي (OCR)"}</button><input type="file" ref={aiScanInputRef} onChange={handleAiScan} className="hidden" /></div>
         <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <div className="md:col-span-2">
-                    <Label>موضوع المعاملة</Label>
-                    <input type="text" value={subject} onChange={e => updateState({subject: e.target.value})} className="w-full input-inset p-3 font-semibold" placeholder="عنوان الخطاب..." required />
-                </div>
-                <div>
-                    <Label>الجهة المرسلة</Label>
-                    <input type="text" value={from} onChange={e => updateState({from: e.target.value})} className="w-full input-inset p-3 font-semibold" placeholder="من..." required />
-                </div>
-                <div>
-                    <Label>الإحالة إلى</Label>
-                    <select value={to} onChange={e => updateState({to: e.target.value})} className="w-full input-inset p-3 font-semibold outline-none">
-                        <option value="">اختر القسم...</option>
-                        {settings.departments.map(d => <option key={d} value={d} className="bg-slate-900">{d}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <Label>تاريخ الاستلام</Label>
-                    <input type="date" value={dateReceived} onChange={e => updateState({dateReceived: e.target.value})} className="w-full input-inset p-3 font-semibold" />
-                </div>
-                <div>
-                    <Label>رقم القيد الخارجي</Label>
-                    <input type="text" value={externalRefNumber} onChange={e => updateState({externalRefNumber: e.target.value})} className="w-full input-inset p-3 font-semibold" placeholder="الرقم على الخطاب..." />
-                </div>
+            <div className="bg-indigo-900/10 border border-indigo-500/20 rounded-lg p-4 mb-4">
+                <h3 className="text-sm font-bold text-indigo-300 flex items-center gap-2 mb-2"><LinkIcon className="w-4 h-4" /> ربط بمعاملة سابقة</h3>
+                {selectedParentLetter ? <div className="flex justify-between items-center bg-indigo-500/20 p-3 rounded border border-indigo-500/30"><p className="text-sm font-bold text-white">{selectedParentLetter.subject}</p><button type="button" onClick={() => updateState({ referenceId: undefined })} className="text-xs text-rose-400 font-bold">إلغاء</button></div> : <input type="text" value={searchTerm} onChange={(e) => { setSearchTerm(e.target.value); setIsSearchOpen(true); }} placeholder="ابحث برقم المعاملة أو الموضوع..." className="w-full px-4 py-2 bg-slate-950/50 text-white border border-slate-700/50 rounded-md text-sm" />}
+                {isSearchOpen && searchTerm && filteredLetters.length > 0 && <div className="bg-slate-900 border border-white/10 rounded mt-1 overflow-hidden">{filteredLetters.map(l => <button key={l.id} type="button" onClick={() => { updateState({ referenceId: l.id }); setSearchTerm(''); setIsSearchOpen(false); }} className="w-full text-right px-4 py-2 hover:bg-white/5 border-b border-white/5 text-sm text-slate-200">{l.subject}</button>)}</div>}
             </div>
-
-            <div>
-                <Label>ملخص الإجراء أو المحتوى</Label>
-                <textarea value={summary} onChange={e => updateState({summary: e.target.value})} rows={3} className="w-full input-inset p-4 text-sm leading-relaxed" placeholder="نبذة مختصرة عن المعاملة..."></textarea>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <InputField label="الموضوع" value={subject} onChange={(e) => updateState({ subject: e.target.value })} ringColor={theme.ring} required />
+                <InputField label="الجهة الوارد منها (من)" value={from} onChange={(e) => updateState({ from: e.target.value })} ringColor={theme.ring} required />
+                <SelectField label="موجه إلى (القسم)" value={to} onChange={(e) => updateState({ to: e.target.value })} options={settings.departments} ringColor={theme.ring} required />
+                <InputField label="تاريخ الاستلام" value={dateReceived} onChange={(e) => updateState({ dateReceived: e.target.value })} type="date" ringColor={theme.ring} />
+                <InputField label="رقم المرجع" value={externalRefNumber} onChange={(e) => updateState({ externalRefNumber: e.target.value })} ringColor={theme.ring} />
+                <SelectField label="نوع المعاملة" value={letterType} onChange={(e) => updateState({ letterType: e.target.value as LetterType })} options={LetterType} ringColor={theme.ring} />
             </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <div>
-                    <Label>الأهمية</Label>
-                    <select value={priority} onChange={e => updateState({priority: e.target.value as PriorityLevel})} className="w-full input-inset p-3 font-semibold outline-none">
-                        {Object.values(PriorityLevel).map(p => <option key={p} value={p} className="bg-slate-900">{p}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <Label>السرية</Label>
-                    <select value={confidentiality} onChange={e => updateState({confidentiality: e.target.value as ConfidentialityLevel})} className="w-full input-inset p-3 font-semibold outline-none">
-                        {Object.values(ConfidentialityLevel).map(c => <option key={c} value={c} className="bg-slate-900">{c}</option>)}
-                    </select>
-                </div>
-                <div>
-                    <Label>أيام الإنجاز</Label>
-                    <input type="number" value={completionDays} onChange={e => updateState({completionDays: e.target.value === '' ? '' : parseInt(e.target.value)})} className="w-full input-inset p-3 font-semibold" placeholder="مهلة المعالجة..." />
-                </div>
-            </div>
-
-            <div className="pt-6 border-t border-white/5 flex justify-center">
-                <button type="submit" className="px-16 py-3.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold text-base shadow-lg transition-all flex items-center gap-2 active:scale-[0.98]">
-                    <CheckCircleIcon className="w-5 h-5" /> تسجيل واعتماد الوارد
-                </button>
-            </div>
+            <div className="pt-4 text-center"><button type="submit" disabled={isScanning} className="w-full md:w-auto px-8 py-3 text-white bg-emerald-600 rounded-md hover:bg-emerald-700 font-bold shadow-lg">تسجيل الخطاب الوارد</button></div>
         </form>
       </div>
     </div>
