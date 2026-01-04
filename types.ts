@@ -77,13 +77,6 @@ export enum View {
   REPORTING,
 }
 
-// @FIX: Added missing ReferralStatus enum
-export enum ReferralStatus {
-    PENDING = 'معلق',
-    COMPLETED = 'مكتمل',
-    REJECTED = 'مرفوض'
-}
-
 export interface User {
   id: string;
   name: string;
@@ -193,20 +186,16 @@ export interface EnhancementSuggestion {
   reason: string;
 }
 
+// @FIX: Added missing FollowUpItem interface to fix module error in services/geminiService.ts
+export interface FollowUpItem {
+    summary: string;
+    letterId: string;
+}
+
 export interface SmartSearchResult {
     letterId: string;
     relevanceReason: string;
     confidenceScore: number;
-}
-
-export interface ContextualReferences {
-  citations: string[];
-  phrasingImprovements: string[];
-}
-
-export interface FollowUpItem {
-    letterId: string;
-    summary: string;
 }
 
 export interface ExtractedLetterDetails {
@@ -249,7 +238,7 @@ export interface GeneratorState {
     editedBody: string;
     selectedVariationKey: 'neutral' | 'strict' | 'diplomatic';
     analysisResult: string[] | null;
-    contextualReferences: ContextualReferences | null;
+    contextualReferences: any | null;
     templateFields: Record<string, string>;
     activeTemplateObjective: string;
     referenceId?: string;
