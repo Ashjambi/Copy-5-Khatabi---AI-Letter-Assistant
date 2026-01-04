@@ -163,8 +163,8 @@ export default function InboundLetterForm(): React.ReactNode {
         toast.success("تم استخلاص البيانات بنجاح!", { id: toastId });
 
     } catch(error: any) {
-        console.error("OCR Final Catch:", error);
-        toast.error(error.message || "حدث خطأ أثناء معالجة الوثيقة.", { id: toastId });
+        console.error("OCR Catch Error:", error);
+        toast.error(error.message || "فشل الذكاء الاصطناعي في تحليل الوثيقة. تأكد من وضوح الملف وصحة مفتاح الوصول.", { id: toastId });
     } finally {
         setIsScanning(false);
         if (e.target) e.target.value = '';

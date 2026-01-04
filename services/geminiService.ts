@@ -9,7 +9,7 @@ import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, Sm
 const getAI = () => {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-        console.error("Critical: API_KEY is undefined in process.env");
+        console.error("Critical Error: process.env.API_KEY is missing. Check your Cloudflare environment variables.");
     }
     return new GoogleGenAI({ apiKey: apiKey || "" });
 };
@@ -33,8 +33,8 @@ export async function extractDetailsFromLetterImage(
 ): Promise<ExtractedLetterDetails> {
   const ai = getAI();
   
-  // تقليل السياق لضمان عدم تجاوز حدود حجم الطلب (Payload)
-  const lettersContext = existingLetters.slice(0, 15).map(l => 
+  // تقليل السياق لأحدث 10 معاملات فقط لضمان عدم تجاوز حجم الطلب في بيئة Edge
+  const lettersContext = existingLetters.slice(0, 10).map(l => 
     `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
   ).join('\n');
 
@@ -44,15 +44,17 @@ export async function extractDetailsFromLetterImage(
   ${lettersContext}`;
 
   try {
-      // تنظيف بيانات الـ Base64 من أي محارف غير مرغوبة قد تسبب فشل الطلب
-      const sanitizedBase64 = base64Image.replace(/^data:.*,/, "").replace(/\s/g, "");
+      // تنظيف متقدم لبيانات Base64 لضمان عدم وجود بادئات أو محارف غير صالحة
+      // نأخذ الجزء الثاني بعد الفاصلة في حال وجود data:image/png;base64,
+      const sanitizedBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+      const finalBase64 = sanitizedBase64.replace(/\s/g, "");
 
       const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
         contents: {
             parts: [
-                { inlineData: { mimeType, data: sanitizedBase64 } },
-                { text: `حلل هذه الوثيقة واستخرج البيانات التالية بصيغة JSON:
+                { inlineData: { mimeType, data: finalBase64 } },
+                { text: `حلل هذه الوثيقة واستخرج البيانات التالية بصيغة JSON حصراً:
                 - subject: موضوع الخطاب
                 - from: جهة الإرسال
                 - to: جهة الاستلام (القسم)
@@ -84,20 +86,21 @@ export async function extractDetailsFromLetterImage(
       });
 
       if (!response.text) {
-          throw new Error("Empty response from Gemini API");
+          throw new Error("No text returned from Gemini API");
       }
 
       return JSON.parse(response.text) as ExtractedLetterDetails;
   } catch (error: any) {
-      console.error("Gemini OCR Detailed Error:", error);
-      // توفير رسالة خطأ أكثر تفصيلاً للمستخدم لمساعدته في تتبع المشكلة
-      const errorMsg = error?.message || "";
-      if (errorMsg.includes("API key not valid")) {
-          throw new Error("مفتاح الـ API غير صالح. يرجى التحقق من إعدادات Cloudflare.");
-      } else if (errorMsg.includes("limit")) {
-          throw new Error("تم تجاوز حدود الاستخدام للـ API حالياً.");
+      console.error("Gemini OCR Detailed Error Trace:", error);
+      
+      let friendlyMessage = "حدث خطأ تقني أثناء تحليل الصورة.";
+      if (error?.message?.includes("API key")) {
+          friendlyMessage = "مفتاح الـ API غير صالح أو غير مفعل في بيئة Cloudflare.";
+      } else if (error?.message?.includes("fetch")) {
+          friendlyMessage = "فشل الاتصال بخوادم الذكاء الاصطناعي. تحقق من حجم الملف.";
       }
-      throw new Error("حدث خطأ تقني أثناء تحليل الصورة. تأكد من وضوح المستند وحجم الملف.");
+      
+      throw new Error(friendlyMessage);
   }
 }
 
