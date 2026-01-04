@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Letter, LetterStatus, ApprovalRecord, CorrespondenceType, Attachment, User, Comment, PriorityLevel, ConfidentialityLevel, CompanySettings, View, EnhancementSuggestion, LetterType, SmartReply, Tone } from '../types';
@@ -116,14 +115,14 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   );
 
   const loadAiInsights = useCallback(async () => {
-    // تحميل التحليل الموجز
+    // 1. تحميل التحليل الموجز
     setIsLoadingBrief(true);
     analyzeLetterBrief(letter)
         .then(setAiBrief)
-        .catch(() => setAiBrief({ summary: "تعذر تحميل التحليل الذكي.", keyPoints: [] }))
+        .catch(() => setAiBrief({ summary: "فشل استرداد التحليل.", keyPoints: [] }))
         .finally(() => setIsLoadingBrief(false));
 
-    // تحميل مسارات الرد الذكي إذا كان وارداً وبحاجة لرد
+    // 2. تحميل مسارات الرد الذكي
     if (letter.correspondenceType === CorrespondenceType.INBOUND && letter.status !== LetterStatus.ARCHIVED && letter.status !== LetterStatus.REPLIED) {
         setIsLoadingSmartReplies(true);
         generateSmartReplies(letter)
