@@ -7,32 +7,48 @@ export async function onRequestPost(context: any) {
   try {
     const body = await request.json();
     const { task, payload } = body;
-    
     const apiKey = env.API_KEY || env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "API_KEY_NOT_CONFIGURED" }), { 
-        status: 500,
-        headers: { "Content-Type": "application/json" }
-      });
+      return new Response(JSON.stringify({ error: "API_KEY_MISSING" }), { status: 500 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    
-    // استخدام gemini-flash-lite-latest للمهام البسيطة لتقليل استهلاك الكوتا
-    // واستخدام gemini-3-flash-preview فقط للمهام التي تتطلب ذكاءً أعلى
-    let modelName = "gemini-flash-lite-latest"; 
+    let modelName = "gemini-3-flash-preview"; 
     let responseSchema: any = undefined;
-    let systemInstruction = "أنت خبير صياغة إداري عربي. الكلمات العربية يجب أن تكون متصلة تماماً.";
-    let finalPrompt = payload;
+    let systemInstruction = "أنت خبير استراتيجيات إدارية عربي. يجب أن تكون الكلمات العربية متصلة تماماً (مثال: 'الموضوع' وليس 'ا ل م و ض و ع').";
 
-    if (task === 'generate_variations') {
-        modelName = "gemini-3-pro-preview";
-        const { isReply, originalContent, objective, sender, receiver, subject, principles } = payload;
-        systemInstruction += ` المطلوب توليد 3 نسخ بصيغة HTML (neutral, strict, diplomatic). الأسلوب المفضل: ${principles}`;
-        finalPrompt = isReply 
-            ? `رد على: ${originalContent}. الهدف: ${objective}. من: ${sender} إلى: ${receiver}. الموضوع: ${subject}.`
-            : `خطاب جديد: ${subject}. المحتوى المطلوب: ${objective}. من: ${sender} إلى: ${receiver}.`;
+    if (task === 'analyze_strategy') {
+        // فكرة خارج الصندوق: تحليل الموقف الإداري قبل الصياغة
+        systemInstruction += " حلل الخطاب الوارد المرفق وحدد: 1. ميزان القوة (صالحنا/صالحهم) 2. النقاط الحرجة 3. ثلاث استراتيجيات رد (دبلوماسية، حازمة، تعاونية).";
+        responseSchema = {
+            type: Type.OBJECT,
+            properties: {
+                situation_analysis: { type: Type.STRING, description: "تحليل دقيق للموقف الحالي" },
+                power_balance: { type: Type.STRING, description: "وصف لميزان القوة الإداري" },
+                strategies: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            id: { type: Type.STRING },
+                            title: { type: Type.STRING, description: "اسم الاستراتيجية" },
+                            impact: { type: Type.STRING, description: "النتيجة المتوقعة لهذا الرد" },
+                            logic: { type: Type.STRING, description: "المنطق خلف هذا المسار" },
+                            suggested_objective: { type: Type.STRING }
+                        }
+                    }
+                }
+            },
+            required: ["situation_analysis", "strategies"]
+        };
+    } else if (task === 'generate_variations') {
+        modelName = "gemini-3-pro-preview"; // جودة فائقة للصياغة
+        const { isReply, originalContent, objective, sender, receiver, subject, strategy_logic } = payload;
+        systemInstruction += ` المطلوب توليد 3 نسخ بصيغة HTML. الاستراتيجية المتبعة: ${strategy_logic || 'رسمية'}`;
+        const prompt = isReply 
+            ? `الخطاب الوارد: ${originalContent}\nالهدف من الرد: ${objective}\nمن: ${sender} إلى: ${receiver}\nالموضوع: ${subject}`
+            : `إنشاء خطاب جديد: ${subject}\nالمحتوى المطلوب: ${objective}\nمن: ${sender} إلى: ${receiver}`;
         
         responseSchema = {
             type: Type.OBJECT,
@@ -49,91 +65,34 @@ export async function onRequestPost(context: any) {
                 }
             }
         };
-    } else if (task === 'smart_replies') {
-        modelName = "gemini-3-flash-preview";
-        systemInstruction += " اقترح 3 مسارات رد ذكية. تأكد أن الـ tone واحدة من: ['محايدة', 'رسمية صارمة', 'دبلوماسية'].";
-        responseSchema = {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    title: { type: Type.STRING },
-                    objective: { type: Type.STRING },
-                    tone: { type: Type.STRING },
-                    type: { type: Type.STRING, enum: ["positive", "negative", "neutral", "inquiry"] }
-                },
-                required: ["title", "objective", "tone", "type"]
-            }
-        };
-    } else if (task === 'analyze_brief') {
-        responseSchema = {
-            type: Type.OBJECT,
-            properties: {
-                summary: { type: Type.STRING },
-                keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } }
-            },
-            required: ["summary", "keyPoints"]
-        };
-    } else if (task === 'enhance_text') {
-        responseSchema = {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    original_part: { type: Type.STRING },
-                    suggested_improvement: { type: Type.STRING },
-                    reason: { type: Type.STRING }
-                }
-            }
-        };
-    } else if (task === 'follow_up') {
-        responseSchema = {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    letterId: { type: Type.STRING },
-                    summary: { type: Type.STRING }
-                }
-            }
-        };
-    } else if (task === 'smart_search') {
-        responseSchema = {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    letterId: { type: Type.STRING },
-                    relevanceReason: { type: Type.STRING },
-                    confidenceScore: { type: Type.NUMBER }
-                }
-            }
-        };
+    } else if (task === 'refine_chat') {
+        // الدردشة لتنقيح النص
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: payload,
+            config: { systemInstruction: "أنت خبير صياغة. عدل النص الموفر لغوياً وإدارياً مع إبقاء الكلمات العربية متصلة." }
+        });
+        return new Response(JSON.stringify({ text: response.text }), { headers: { "Content-Type": "application/json" } });
     }
 
     const response = await ai.models.generateContent({
       model: modelName,
-      contents: finalPrompt,
+      contents: typeof payload === 'string' ? payload : JSON.stringify(payload),
       config: {
           systemInstruction,
-          responseMimeType: responseSchema ? "application/json" : "text/plain",
+          responseMimeType: "application/json",
           responseSchema: responseSchema
       }
     });
 
-    return new Response(response.text, {
-      headers: { "Content-Type": "application/json" }
-    });
+    return new Response(response.text, { headers: { "Content-Type": "application/json" } });
 
   } catch (e: any) {
-    console.error("AI Proxy Error:", e);
-    const status = e.message?.includes('429') || e.message?.includes('quota') ? 429 : 500;
-    const errorMessage = status === 429 
-        ? "تجاوزت حد الطلبات المسموح به لليوم. يرجى الانتظار قليلاً أو الترقية لخطة مدفوعة."
-        : e.message;
-        
-    return new Response(JSON.stringify({ error: errorMessage }), { 
-        status,
+    const isQuotaError = e.message?.includes('429') || e.message?.includes('quota');
+    return new Response(JSON.stringify({ 
+        error: isQuotaError ? "تجاوزت حد الكوتا. يرجى الانتظار دقيقة." : e.message 
+    }), { 
+        status: isQuotaError ? 429 : 500,
         headers: { "Content-Type": "application/json" }
     });
   }
