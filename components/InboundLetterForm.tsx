@@ -101,7 +101,7 @@ export default function InboundLetterForm(): React.ReactNode {
     if (!file) return;
 
     setIsScanning(true);
-    const scanToast = toast.loading("جاري تحليل الوثيقة ذكياً...");
+    const scanToast = toast.loading("جاري فحص المستند ذكياً...");
     
     try {
         let base64Data: string;
@@ -110,7 +110,7 @@ export default function InboundLetterForm(): React.ReactNode {
         const dataUrl = await fileToDataURL(file);
         base64Data = dataUrl.split(",")[1];
 
-        // معالجة ملفات TIFF بشكل خاص عبر تحويلها لصورة
+        // معالجة ملفات TIFF بشكل خاص
         if (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
             const arrayBuffer = await file.arrayBuffer();
             const tiff = new Tiff({ buffer: arrayBuffer });
@@ -157,17 +157,15 @@ export default function InboundLetterForm(): React.ReactNode {
             }
         }
         
-        // إضافة الملف للمرفقات آلياً
         if (!attachments.some(a => a.name === file.name)) {
             updates.attachments = [file, ...attachments];
         }
         
         updateState(updates);
-        toast.success("تم استخلاص البيانات من الوثيقة!", { id: scanToast });
+        toast.success("تم استخلاص البيانات بنجاح!", { id: scanToast });
     } catch(error: any) {
-        console.error("OCR Final Error:", error);
-        // عرض تفاصيل الخطأ للمستخدم للمساعدة في التشخيص
-        toast.error(`خطأ في المعالجة: ${error.message || 'يرجى التحقق من الملف والمفتاح'}`, { id: scanToast, duration: 5000 });
+        console.error("Scan Error:", error);
+        toast.error(`حدث خطأ أثناء معالجة الوثيقة: ${error.message || 'خطأ تقني'}`, { id: scanToast });
     } finally {
         setIsScanning(false);
         if (e.target) e.target.value = '';
@@ -187,7 +185,7 @@ export default function InboundLetterForm(): React.ReactNode {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subject.trim() || !from.trim() || !to.trim() || attachments.length === 0) {
-        toast.error('الرجاء تعبئة الحقول الإلزامية وإرفاق الوثيقة.');
+        toast.error('الرجاء تعبئة الحقول الإلزامية وإرفاق ملف واحد على الأقل.');
         return;
     }
 
