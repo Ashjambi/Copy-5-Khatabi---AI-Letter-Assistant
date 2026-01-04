@@ -98,7 +98,12 @@ export default function InboundLetterForm(): React.ReactNode {
     const toastId = toast.loading("جاري قراءة وتحليل الوثيقة سحابياً...");
     
     try {
-        // نرسل الملف مباشرة الآن للخدمة المحدثة
+        // @FIX: Added base64 conversion logic to correctly extract the base64 data and mimeType from the uploaded file.
+        const dataUrl = await fileToDataURL(file);
+        const [header, data] = dataUrl.split(',');
+        const mimeType = header.match(/:(.*?);/)?.[1] || file.type || 'application/octet-stream';
+        const base64Data = data;
+
         const letterTypes = Object.values(LetterType) as string[];
         const priorityLevels = Object.values(PriorityLevel) as string[];
         const confidentialityLevels = Object.values(ConfidentialityLevel) as string[];
@@ -112,8 +117,11 @@ export default function InboundLetterForm(): React.ReactNode {
             date: l.date
         }));
 
+        // @FIX: Corrected the call to extractDetailsFromLetterImage to pass 8 arguments instead of 7.
+        // It now correctly receives base64Data and mimeType as the first two arguments.
         const extractedData = await extractDetailsFromLetterImage(
-            file, 
+            base64Data, 
+            mimeType,
             settings.departments, 
             letterTypes, 
             priorityLevels, 

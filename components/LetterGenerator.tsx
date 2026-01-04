@@ -32,16 +32,22 @@ export default function LetterGenerator() {
     const [objectiveText, setObjectiveText] = useState(objective || '');
     const [isContextCollapsed, setIsContextCollapsed] = useState(false);
 
+    // العثور على الخطاب الأب فوراً عند توفر المرجع
     const parentLetter = useMemo(() => letters.find(l => l.id === referenceId), [letters, referenceId]);
     const isReplyMode = !!referenceId;
 
+    // جلب الردود الذكية فور الدخول في وضع الرد
     useEffect(() => {
         if (isReplyMode && parentLetter) {
             const fetchReplies = async () => {
                 setIsLoadingReplies(true);
                 try {
                     const replies = await generateSmartReplies(parentLetter);
-                    setSmartReplies(replies);
+                    if (replies && replies.length > 0) {
+                        setSmartReplies(replies);
+                    } else {
+                        console.warn("No smart replies returned from API");
+                    }
                 } catch (e) {
                     console.error("Smart replies failed", e);
                 } finally {
@@ -66,25 +72,15 @@ export default function LetterGenerator() {
             return;
         }
 
-        const apiKey = process.env.API_KEY;
-        if (!apiKey) {
-            toast.error("مفتاح API غير متوفر. يرجى مراجعة إعدادات النظام.");
-            return;
-        }
-
         setIsLoading(true);
         try {
-            // إنشاء نسخة المحرك عند الطلب لضمان استخدام المفتاح الأحدث
-            const ai = new GoogleGenAI({ apiKey });
+            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
             
-            const systemInstruction = `أنت خبير صياغة إدارية عربي رفيع المستوى. 
-            قاعدة لغوية قطعية: يجب أن تكون جميع النصوص العربية بكلمات متصلة وطبيعية تماماً (يُمنع منعاً باتاً فصل الحروف). 
-            المهمة: إنشاء 3 مسودات (رسمية، حازمة، دبلوماسية) بصيغة HTML غنية.
-            التخصيص المكتسب: ${learnedPrinciples.map(p => p.text).join(' | ')}`;
+            const systemInstruction = `أنت خبير صياغة إدارية. قاعدة لغوية: كلمات متصلة حروفها طبيعية. المهمة: 3 مسودات HTML. التخصيص: ${learnedPrinciples.map(p => p.text).join(' | ')}`;
 
             const userPrompt = isReplyMode 
-                ? `رد استراتيجي على خطاب: ${originalLetterContent}. التوجيه الحالي: ${objectiveText}. من ${sender} إلى ${receiver}. الموضوع: ${subject}.`
-                : `أنشئ خطاباً رسمياً احترافياً: الموضوع: ${subject}. المحتوى المطلوب: ${objectiveText}. المرسل: ${sender} | المستلم: ${receiver}.`;
+                ? `رد على: ${originalLetterContent}. التوجيه: ${objectiveText}. من ${sender} إلى ${receiver}. الموضوع: ${subject}.`
+                : `إنشاء خطاب: ${subject}. المحتوى: ${objectiveText}. المرسل: ${sender} | المستلم: ${receiver}.`;
 
             const response = await ai.models.generateContent({
                 model: "gemini-3-flash-preview",
@@ -95,24 +91,13 @@ export default function LetterGenerator() {
                     responseSchema: {
                         type: Type.OBJECT,
                         properties: {
-                            analysis: { 
-                                type: Type.OBJECT, 
-                                properties: { 
-                                    strategic_feedback: { type: Type.ARRAY, items: { type: Type.STRING } } 
-                                },
-                                required: ["strategic_feedback"]
-                            },
+                            analysis: { type: Type.OBJECT, properties: { strategic_feedback: { type: Type.ARRAY, items: { type: Type.STRING } } } },
                             variations: {
                                 type: Type.OBJECT,
-                                properties: { 
-                                    neutral: { type: Type.STRING }, 
-                                    strict: { type: Type.STRING }, 
-                                    diplomatic: { type: Type.STRING } 
-                                },
+                                properties: { neutral: { type: Type.STRING }, strict: { type: Type.STRING }, diplomatic: { type: Type.STRING } },
                                 required: ["neutral", "strict", "diplomatic"]
                             }
-                        },
-                        required: ["analysis", "variations"]
+                        }
                     }
                 }
             });
@@ -120,8 +105,7 @@ export default function LetterGenerator() {
             setGeneratedContent(JSON.parse(response.text || "{}"));
             setStep(1);
         } catch (e) {
-            console.error(e);
-            toast.error("فشلت الصياغة الذكية. يرجى التحقق من اتصالك بالإنترنت وصحة المفتاح.");
+            toast.error("فشلت الصياغة الذكية. يرجى المحاولة لاحقاً.");
         } finally {
             setIsLoading(false);
         }
@@ -261,6 +245,11 @@ export default function LetterGenerator() {
                                                     </div>
                                                 </button>
                                             ))}
+                                            {!isLoadingReplies && smartReplies.length === 0 && (
+                                                <div className="p-10 text-center border-2 border-dashed border-white/5 rounded-2xl">
+                                                    <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">انقر على "توليد" للصياغة اليدوية أو انتظر استكشاف المسارات...</p>
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )}
