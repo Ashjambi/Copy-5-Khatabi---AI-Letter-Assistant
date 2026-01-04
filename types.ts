@@ -77,6 +77,19 @@ export enum View {
   REPORTING,
 }
 
+export interface StrategicAnalysis {
+    sender_vibe: string;
+    power_dynamic: 'superior' | 'equal' | 'subordinate';
+    critical_points: string[];
+    suggested_strategies: {
+        id: 'authority' | 'partnership' | 'delay';
+        title: string;
+        impact: string;
+        logic: string;
+        objective: string;
+    }[];
+}
+
 export interface User {
   id: string;
   name: string;
@@ -109,7 +122,6 @@ export interface Comment {
     createdAt: string;
 }
 
-// @FIX: Added missing AICache interface to support letter intelligence caching
 export interface AICache {
     brief?: { summary: string; keyPoints: string[] };
     smartReplies?: SmartReply[];
@@ -143,7 +155,6 @@ export interface Letter {
   category?: string;
   summary?: string;
   creatorId?: string;
-  // @FIX: Added missing aiCache property to Letter interface to fix errors in LetterDetails.tsx
   aiCache?: AICache;
 }
 
@@ -195,7 +206,6 @@ export interface EnhancementSuggestion {
   reason: string;
 }
 
-// @FIX: Added missing FollowUpItem interface to fix module error in services/geminiService.ts
 export interface FollowUpItem {
     summary: string;
     letterId: string;
