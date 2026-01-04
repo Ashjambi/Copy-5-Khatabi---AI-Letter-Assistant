@@ -101,7 +101,7 @@ export default function InboundLetterForm(): React.ReactNode {
     if (!file) return;
 
     setIsScanning(true);
-    const scanToast = toast.loading("جاري فحص المستند ذكياً...");
+    const scanToast = toast.loading("جاري تحليل الوثيقة ذكياً...");
     
     try {
         let base64Data: string;
@@ -110,7 +110,7 @@ export default function InboundLetterForm(): React.ReactNode {
         const dataUrl = await fileToDataURL(file);
         base64Data = dataUrl.split(",")[1];
 
-        // معالجة ملفات TIFF بشكل خاص
+        // معالجة ملفات TIFF بشكل خاص عبر تحويلها لصورة
         if (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
             const arrayBuffer = await file.arrayBuffer();
             const tiff = new Tiff({ buffer: arrayBuffer });
@@ -143,14 +143,13 @@ export default function InboundLetterForm(): React.ReactNode {
         if (extractedData.from) updates.from = extractedData.from;
         if (extractedData.to) updates.to = extractedData.to; 
         if (extractedData.externalRefNumber) updates.externalRefNumber = extractedData.externalRefNumber;
-        if (extractedData.letterType && Object.values(LetterType).includes(extractedData.letterType as any)) updates.letterType = extractedData.letterType as LetterType;
+        if (extractedData.letterType) updates.letterType = extractedData.letterType as LetterType;
         if (extractedData.category) updates.category = extractedData.category;
         if (extractedData.summary) updates.summary = extractedData.summary;
         if (extractedData.priority) updates.priority = extractedData.priority as PriorityLevel;
         if (extractedData.confidentiality) updates.confidentiality = extractedData.confidentiality as ConfidentialityLevel;
         if (extractedData.referenceId) updates.referenceId = extractedData.referenceId;
         
-        // تصحيح التاريخ إذا تم استخراجه
         if (extractedData.date) {
             const d = new Date(extractedData.date);
             if (!isNaN(d.getTime())) {
@@ -158,16 +157,17 @@ export default function InboundLetterForm(): React.ReactNode {
             }
         }
         
-        // تحديث المرفقات لإضافة الملف الممسوح إذا لم يكن موجوداً
+        // إضافة الملف للمرفقات آلياً
         if (!attachments.some(a => a.name === file.name)) {
             updates.attachments = [file, ...attachments];
         }
         
         updateState(updates);
-        toast.success("تم استخلاص البيانات بنجاح!", { id: scanToast });
+        toast.success("تم استخلاص البيانات من الوثيقة!", { id: scanToast });
     } catch(error: any) {
-        console.error("Scan Error:", error);
-        toast.error(`حدث خطأ أثناء معالجة الوثيقة: ${error.message || 'خطأ تقني'}`, { id: scanToast });
+        console.error("OCR Final Error:", error);
+        // عرض تفاصيل الخطأ للمستخدم للمساعدة في التشخيص
+        toast.error(`خطأ في المعالجة: ${error.message || 'يرجى التحقق من الملف والمفتاح'}`, { id: scanToast, duration: 5000 });
     } finally {
         setIsScanning(false);
         if (e.target) e.target.value = '';
@@ -187,7 +187,7 @@ export default function InboundLetterForm(): React.ReactNode {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subject.trim() || !from.trim() || !to.trim() || attachments.length === 0) {
-        toast.error('الرجاء تعبئة الحقول الإلزامية وإرفاق ملف واحد على الأقل.');
+        toast.error('الرجاء تعبئة الحقول الإلزامية وإرفاق الوثيقة.');
         return;
     }
 
