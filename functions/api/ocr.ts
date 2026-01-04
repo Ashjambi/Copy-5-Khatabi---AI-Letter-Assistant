@@ -9,12 +9,12 @@ export async function onRequestPost(context: any) {
     const { base64Data, mimeType, lettersContext } = body;
 
     if (!base64Data) {
-      return new Response(JSON.stringify({ error: "Missing image data" }), { status: 400 });
+      return new Response(JSON.stringify({ error: "No image data provided" }), { status: 400 });
     }
 
     const apiKey = env.API_KEY || env.GEMINI_API_KEY;
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "API_KEY NOT FOUND IN BACKEND" }), { status: 500 });
+      return new Response(JSON.stringify({ error: "Backend API key missing" }), { status: 500 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
@@ -27,16 +27,15 @@ export async function onRequestPost(context: any) {
           parts: [
             { inlineData: { data: base64Data, mimeType: mimeType || "image/jpeg" } },
             { 
-              text: `أنت خبير أرشفة. استخرج البيانات بكلمات عربية متصلة (لا تقطع الحروف).
+              text: `أنت خبير أرشفة إداري. استخرج البيانات بكلمات عربية متصلة تماماً.
               المطلوب JSON:
-              - subject: الموضوع بدقة
-              - from: المرسل
-              - to: المستلم المقترح
+              - subject: موضوع الخطاب
+              - from: الجهة المرسلة
+              - to: القسم المستلم المقترح
               - date: التاريخ (YYYY-MM-DD)
               - externalRefNumber: رقم الصادر الخارجي
-              - summary: ملخص تنفيذي (سطر واحد)
-              - category: تصنيف (مثال: مالي، قانوني، إداري)
-              - referenceId: تطابق مع أحد المعرفات التالية إن وجد صلة: ${lettersContext}` 
+              - summary: ملخص تنفيذي سطر واحد
+              - referenceId: معرف المعاملة المرتبطة إن وجد صلة: ${lettersContext}` 
             }
           ]
         }
@@ -65,7 +64,7 @@ export async function onRequestPost(context: any) {
     });
 
   } catch (e: any) {
-    console.error("OCR API Error:", e);
+    console.error("OCR Proxy Error:", e);
     return new Response(JSON.stringify({ error: e.message }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
