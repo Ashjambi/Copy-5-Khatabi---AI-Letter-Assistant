@@ -5,7 +5,7 @@ import { GoogleGenAI, Type } from "@google/genai";
  * وظيفة تشخيصية نهائية لمعالجة المستندات عبر Gemini File API
  */
 export async function onRequestPost(context: any) {
-  const { request } = context;
+  const { request, env } = context;
 
   try {
     const formData = await request.formData();
@@ -16,13 +16,13 @@ export async function onRequestPost(context: any) {
       return new Response("DEBUG_ERROR: No file received in FormData", { status: 400 });
     }
 
-    const apiKey = process.env.API_KEY || "";
+    // في بيئة Cloudflare Pages، يتم الوصول للمتغيرات عبر env وليس process.env
+    const apiKey = env.API_KEY || "";
     if (!apiKey) {
-      return new Response("DEBUG_ERROR: API_KEY is missing in Cloudflare Environment Variables", { status: 500 });
+      return new Response("DEBUG_ERROR: API_KEY is missing in Cloudflare Environment Variables (Secret Key)", { status: 500 });
     }
 
     // --- 1) مرحلة الرفع (Upload Phase) ---
-    // نستخدم fetch مباشر للحصول على تفاصيل الخطأ في حال فشل الرفع
     const uploadRes = await fetch(
       `https://generativelanguage.googleapis.com/upload/v1beta/files?key=${apiKey}`,
       {
@@ -38,7 +38,6 @@ export async function onRequestPost(context: any) {
     const uploadText = await uploadRes.text();
     
     if (!uploadRes.ok) {
-      // إرجاع خطأ الرفع الخام للتشخيص في المتصفح
       return new Response(`UPLOAD_FAILED_RAW: ${uploadText}`, { 
         status: 500,
         headers: { "Content-Type": "application/json" }
@@ -51,7 +50,6 @@ export async function onRequestPost(context: any) {
     // --- 2) مرحلة التحليل (Analysis Phase) ---
     const ai = new GoogleGenAI({ apiKey });
     
-    // ملاحظة: نستخدم Try/Catch داخلي للموديل لضمان استخلاص نص الخطأ من الـ SDK
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
@@ -102,12 +100,10 @@ export async function onRequestPost(context: any) {
         });
 
     } catch (modelError: any) {
-        // إرجاع خطأ الموديل الخام (مثل استهلاك الكوتا أو رفض المحتوى)
         return new Response(`MODEL_ANALYSIS_FAILED: ${modelError.message}`, { status: 500 });
     }
 
   } catch (err: any) {
-    // خطأ في بيئة تشغيل Cloudflare (Runtime Error)
     return new Response(`RUNTIME_CRITICAL_ERROR: ${err.message}`, { status: 500 });
   }
 }
