@@ -1,9 +1,6 @@
 
 import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone } from "../types";
 
-/**
- * دالة مساعدة لإرسال المهام إلى الوظيفة السحابية الآمنة
- */
 async function sendToAiBackend(payload: any, config: any = {}) {
     const response = await fetch('/api/ai', {
         method: 'POST',
@@ -29,18 +26,24 @@ export async function extractDetailsFromLetterImage(
   existingCategories: string[],
   existingLetters: { id: string, subject: string, internalRefNumber?: string, externalRefNumber?: string, date: string }[]
 ): Promise<ExtractedLetterDetails> {
-  // OCR لا يزال يستخدم مسار /api/ocr المخصص لمعالجة الصور
-  const formData = new FormData();
-  const blob = await (await fetch(`data:${mimeType};base64,${base64Image}`)).blob();
-  formData.append('file', blob, 'document.pdf');
-  
   const context = existingLetters.map(l => 
-    `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
+    `ID:${l.id}|Ref:${l.internalRefNumber}|Subj:${l.subject}`
   ).join('\n');
-  formData.append('lettersContext', context);
 
-  const response = await fetch('/api/ocr', { method: 'POST', body: formData });
-  if (!response.ok) throw new Error("فشل تحليل الصورة سحابياً.");
+  const response = await fetch('/api/ocr', { 
+    method: 'POST', 
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+        base64Data: base64Image,
+        mimeType: mimeType,
+        lettersContext: context
+    })
+  });
+
+  if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || "فشل التحليل السريع.");
+  }
   return await response.json();
 }
 
@@ -53,9 +56,9 @@ export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]
         items: {
             type: 'OBJECT',
             properties: {
-                title: { type: 'STRING', description: "عنوان المسار" },
-                objective: { type: 'STRING', description: "التوجيه المقترح" },
-                tone: { type: 'STRING', description: "النبرة الإدارية" },
+                title: { type: 'STRING' },
+                objective: { type: 'STRING' },
+                tone: { type: 'STRING' },
                 type: { type: 'STRING', enum: ["positive", "negative", "neutral", "inquiry"] }
             },
             required: ["title", "objective", "tone", "type"]
