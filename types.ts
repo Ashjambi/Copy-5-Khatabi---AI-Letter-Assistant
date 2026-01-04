@@ -77,17 +77,20 @@ export enum View {
   REPORTING,
 }
 
+export interface StrategicPath {
+    id: string;
+    title: string;
+    description: string;
+    logic: string;
+    impact: string;
+    suggestedObjective: string;
+}
+
 export interface StrategicAnalysis {
-    sender_vibe: string;
-    power_dynamic: 'superior' | 'equal' | 'subordinate';
-    critical_points: string[];
-    suggested_strategies: {
-        id: 'authority' | 'partnership' | 'delay';
-        title: string;
-        impact: string;
-        logic: string;
-        objective: string;
-    }[];
+    intent: string;
+    powerBalance: string;
+    risks: string[];
+    paths: StrategicPath[];
 }
 
 export interface User {
@@ -126,6 +129,7 @@ export interface AICache {
     brief?: { summary: string; keyPoints: string[] };
     smartReplies?: SmartReply[];
     threadSummary?: string;
+    strategy?: StrategicAnalysis;
 }
 
 export interface Letter {
