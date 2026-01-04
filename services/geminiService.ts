@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone, SmartSearchResult } from "../types";
+import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone } from "../types";
 
 /**
  * وظيفة تهيئة المحرك للخدمات المتبقية في الواجهة الأمامية.
@@ -17,7 +17,7 @@ const ARABIC_STRICT_CONNECTED_SCRIPT = `
 `;
 
 export async function extractDetailsFromLetterImage(
-  file: File, // تم التغيير لاستقبال ملف File مباشرة
+  file: File,
   departments: string[],
   letterTypes: string[],
   priorityLevels: string[],
@@ -26,13 +26,11 @@ export async function extractDetailsFromLetterImage(
   existingLetters: { id: string, subject: string, internalRefNumber?: string, externalRefNumber?: string, date: string }[]
 ): Promise<ExtractedLetterDetails> {
   
-  // تقليل السياق لأحدث 5 معاملات فقط لضمان بقاء الطلب خفيفاً
   const lettersContext = existingLetters.slice(0, 5).map(l => 
     `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
   ).join('\n');
 
   try {
-      // إرسال الملف عبر FormData لضمان معالجة Binary سليمة في Cloudflare
       const formData = new FormData();
       formData.append('file', file);
       formData.append('lettersContext', lettersContext);
@@ -42,17 +40,24 @@ export async function extractDetailsFromLetterImage(
           body: formData
       });
 
+      const responseText = await response.text();
+
       if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.error || "فشل تحليل المستند سحابياً.");
+          // إظهار الخطأ التقني المفصل القادم من Cloudflare مباشرة
+          console.error("DEBUG_LOG_FROM_SERVER:", responseText);
+          throw new Error(responseText || "تعذر تحليل المستند.");
       }
 
-      const result = await response.json();
-      return result as ExtractedLetterDetails;
+      try {
+          return JSON.parse(responseText) as ExtractedLetterDetails;
+      } catch (jsonErr) {
+          throw new Error(`JSON_PARSE_ERROR: ${responseText.substring(0, 100)}`);
+      }
       
   } catch (error: any) {
-      console.error("OCR Fetch Proxy Error:", error);
-      throw new Error(error.message || "تأكد من إعدادات Cloudflare وصحة مفتاح الـ API.");
+      console.error("OCR Final Catch:", error);
+      // إرجاع نص الخطأ كما هو للمستخدم ليراه بوضوح
+      throw new Error(error.message);
   }
 }
 
@@ -160,26 +165,15 @@ export async function getFollowUpSummary(letters: Letter[]): Promise<FollowUpIte
     }
 }
 
-export async function searchLettersSmartly(query: string, letters: Letter[]): Promise<SmartSearchResult[]> {
+export async function searchLettersSmartly(query: string, letters: Letter[]): Promise<any[]> {
     const ai = getAI();
-    const list = letters.map(l => ({ id: l.id, subject: l.subject, summary: l.summary || "" }));
+    const list = letters.map(l => ({ id: l.id, subject: l.subject }));
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
             contents: `ابحث عن "${query}" سياقياً في: ${JSON.stringify(list)}`,
             config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            letterId: { type: Type.STRING },
-                            relevanceReason: { type: Type.STRING },
-                            confidenceScore: { type: Type.NUMBER }
-                        }
-                    }
-                }
+                responseMimeType: "application/json"
             }
         });
         return JSON.parse(response.text || "[]");
