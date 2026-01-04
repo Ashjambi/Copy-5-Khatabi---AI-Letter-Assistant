@@ -3,13 +3,12 @@ import { GoogleGenAI, Type } from "@google/genai";
 import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone, SmartSearchResult } from "../types";
 
 /**
- * وظيفة تهيئة المحرك.
- * تلتزم القواعد باستخدام process.env.API_KEY حصرياً.
+ * وظيفة تهيئة المحرك للخدمات المتبقية في الواجهة الأمامية.
  */
 const getAI = () => {
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-        console.error("Critical Error: process.env.API_KEY is missing. Check your Cloudflare environment variables.");
+        console.error("Critical Error: process.env.API_KEY is missing in client context.");
     }
     return new GoogleGenAI({ apiKey: apiKey || "" });
 };
@@ -31,76 +30,43 @@ export async function extractDetailsFromLetterImage(
   existingCategories: string[],
   existingLetters: { id: string, subject: string, internalRefNumber?: string, externalRefNumber?: string, date: string }[]
 ): Promise<ExtractedLetterDetails> {
-  const ai = getAI();
   
-  // تقليل السياق لأحدث 10 معاملات فقط لضمان عدم تجاوز حجم الطلب في بيئة Edge
+  // تقليل السياق لأحدث 10 معاملات فقط لضمان بقاء حجم الطلب ضمن الحدود المسموحة لـ Cloudflare Functions
   const lettersContext = existingLetters.slice(0, 10).map(l => 
     `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
   ).join('\n');
 
-  const systemInstruction = `أنت مساعد أرشفة إداري ذكي متخصص في استخراج البيانات من الوثائق الرسمية.
-  ${ARABIC_STRICT_CONNECTED_SCRIPT}
-  سياق المعاملات السابقة للمطابقة:
-  ${lettersContext}`;
-
   try {
-      // تنظيف متقدم لبيانات Base64 لضمان عدم وجود بادئات أو محارف غير صالحة
-      // نأخذ الجزء الثاني بعد الفاصلة في حال وجود data:image/png;base64,
+      // استخلاص بيانات Base64 الخام
       const sanitizedBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
-      const finalBase64 = sanitizedBase64.replace(/\s/g, "");
 
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: {
-            parts: [
-                { inlineData: { mimeType, data: finalBase64 } },
-                { text: `حلل هذه الوثيقة واستخرج البيانات التالية بصيغة JSON حصراً:
-                - subject: موضوع الخطاب
-                - from: جهة الإرسال
-                - to: جهة الاستلام (القسم)
-                - date: التاريخ المذكور في الخطاب
-                - externalRefNumber: رقم الصادر الخارجي إن وجد
-                - summary: ملخص قصير جداً للمحتوى
-                - category: تصنيف مقترح
-                - referenceId: معرف المعاملة المرتبطة من السياق إن وجد` }
-            ]
-        },
-        config: {
-            systemInstruction,
-            responseMimeType: "application/json",
-            responseSchema: {
-                type: Type.OBJECT,
-                properties: {
-                    subject: { type: Type.STRING },
-                    from: { type: Type.STRING },
-                    to: { type: Type.STRING },
-                    date: { type: Type.STRING },
-                    externalRefNumber: { type: Type.STRING },
-                    summary: { type: Type.STRING },
-                    category: { type: Type.STRING },
-                    referenceId: { type: Type.STRING }
-                },
-                required: ["subject", "from", "to"]
-            }
-        }
+      // استدعاء وظيفة Cloudflare (Backend Proxy)
+      // نستخدم المسار النسبي /api/ocr الذي تم إنشاؤه في المجلد functions
+      const response = await fetch('/api/ocr', {
+          method: 'POST',
+          headers: { 
+              'Content-Type': 'application/json',
+              'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+              base64Image: sanitizedBase64,
+              mimeType,
+              lettersContext
+          })
       });
 
-      if (!response.text) {
-          throw new Error("No text returned from Gemini API");
+      if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || "فشل الاتصال بالخادم السحابي (Cloudflare Function).");
       }
 
-      return JSON.parse(response.text) as ExtractedLetterDetails;
+      const result = await response.json();
+      return result as ExtractedLetterDetails;
+      
   } catch (error: any) {
-      console.error("Gemini OCR Detailed Error Trace:", error);
-      
-      let friendlyMessage = "حدث خطأ تقني أثناء تحليل الصورة.";
-      if (error?.message?.includes("API key")) {
-          friendlyMessage = "مفتاح الـ API غير صالح أو غير مفعل في بيئة Cloudflare.";
-      } else if (error?.message?.includes("fetch")) {
-          friendlyMessage = "فشل الاتصال بخوادم الذكاء الاصطناعي. تحقق من حجم الملف.";
-      }
-      
-      throw new Error(friendlyMessage);
+      console.error("OCR Proxy Fetch Error:", error);
+      // إرجاع رسالة خطأ واضحة للمستخدم بناءً على تحليل المشكلة
+      throw new Error(error.message || "حدث خطأ أثناء معالجة الصورة. تأكد من إعدادات Cloudflare وصحة مفتاح الـ API.");
   }
 }
 
