@@ -109,6 +109,13 @@ export interface Comment {
     createdAt: string;
 }
 
+// @FIX: Added missing AICache interface to support letter intelligence caching
+export interface AICache {
+    brief?: { summary: string; keyPoints: string[] };
+    smartReplies?: SmartReply[];
+    threadSummary?: string;
+}
+
 export interface Letter {
   id: string;
   subject: string;
@@ -136,6 +143,8 @@ export interface Letter {
   category?: string;
   summary?: string;
   creatorId?: string;
+  // @FIX: Added missing aiCache property to Letter interface to fix errors in LetterDetails.tsx
+  aiCache?: AICache;
 }
 
 export interface Template {

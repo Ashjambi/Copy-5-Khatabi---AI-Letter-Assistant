@@ -11,21 +11,23 @@ export async function onRequestPost(context: any) {
     const apiKey = env.API_KEY || env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "API_KEY_NOT_CONFIGURED_IN_DASHBOARD" }), { 
+      return new Response(JSON.stringify({ error: "API_KEY_NOT_CONFIGURED" }), { 
         status: 500,
         headers: { "Content-Type": "application/json" }
       });
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    let modelName = "gemini-3-flash-preview";
+    
+    // استخدام gemini-flash-lite-latest للمهام البسيطة لتقليل استهلاك الكوتا
+    // واستخدام gemini-3-flash-preview فقط للمهام التي تتطلب ذكاءً أعلى
+    let modelName = "gemini-flash-lite-latest"; 
     let responseSchema: any = undefined;
     let systemInstruction = "أنت خبير صياغة إداري عربي. الكلمات العربية يجب أن تكون متصلة تماماً.";
     let finalPrompt = payload;
 
-    // تشعيب المهام بناءً على الطلب
     if (task === 'generate_variations') {
-        modelName = "gemini-3-pro-preview"; // للمهام المعقدة نستخدم النسخة الاحترافية
+        modelName = "gemini-3-pro-preview";
         const { isReply, originalContent, objective, sender, receiver, subject, principles } = payload;
         systemInstruction += ` المطلوب توليد 3 نسخ بصيغة HTML (neutral, strict, diplomatic). الأسلوب المفضل: ${principles}`;
         finalPrompt = isReply 
@@ -48,6 +50,7 @@ export async function onRequestPost(context: any) {
             }
         };
     } else if (task === 'smart_replies') {
+        modelName = "gemini-3-flash-preview";
         systemInstruction += " اقترح 3 مسارات رد ذكية. تأكد أن الـ tone واحدة من: ['محايدة', 'رسمية صارمة', 'دبلوماسية'].";
         responseSchema = {
             type: Type.ARRAY,
@@ -124,9 +127,12 @@ export async function onRequestPost(context: any) {
 
   } catch (e: any) {
     console.error("AI Proxy Error:", e);
-    // إرجاع رمز الخطأ الأصلي إذا كان متاحاً (مثل 429)
-    const status = e.message?.includes('429') ? 429 : 500;
-    return new Response(JSON.stringify({ error: e.message }), { 
+    const status = e.message?.includes('429') || e.message?.includes('quota') ? 429 : 500;
+    const errorMessage = status === 429 
+        ? "تجاوزت حد الطلبات المسموح به لليوم. يرجى الانتظار قليلاً أو الترقية لخطة مدفوعة."
+        : e.message;
+        
+    return new Response(JSON.stringify({ error: errorMessage }), { 
         status,
         headers: { "Content-Type": "application/json" }
     });

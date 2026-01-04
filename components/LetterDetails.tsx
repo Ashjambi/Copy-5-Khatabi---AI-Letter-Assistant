@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Letter, LetterStatus, ApprovalRecord, CorrespondenceType, Attachment, User, Comment, PriorityLevel, ConfidentialityLevel, CompanySettings, View, EnhancementSuggestion, LetterType, SmartReply, Tone } from '../types';
@@ -93,16 +94,13 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   const [newComment, setNewComment] = useState('');
   const [diffData, setDiffData] = useState<{ old: string; new: string } | null>(null);
   const [isSummarizing, setIsSummarizing] = useState(false);
-  const [summary, setSummary] = useState<string | null>(null);
   const [printableContent, setPrintableContent] = useState<React.ReactNode | null>(null);
   
   const [isProofreading, setIsProofreading] = useState(false);
   const [showProofreadModal, setShowProofreadModal] = useState(false);
   const [proofreadSuggestions, setProofreadSuggestions] = useState<EnhancementSuggestion[]>([]);
 
-  const [aiBrief, setAiBrief] = useState<{summary: string, keyPoints: string[]} | null>(null);
   const [isLoadingBrief, setIsLoadingBrief] = useState(false);
-  const [smartReplies, setSmartReplies] = useState<SmartReply[]>([]);
   const [isLoadingSmartReplies, setIsLoadingSmartReplies] = useState(false);
 
   const printRoot = document.getElementById('print-root');
@@ -114,42 +112,55 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
     </button>
   );
 
-  const loadAiInsights = useCallback(async () => {
-    // 1. تحميل التحليل الموجز
+  const handleGenerateBrief = async () => {
     setIsLoadingBrief(true);
-    analyzeLetterBrief(letter)
-        .then(setAiBrief)
-        .catch(() => setAiBrief({ summary: "فشل استرداد التحليل.", keyPoints: [] }))
-        .finally(() => setIsLoadingBrief(false));
-
-    // 2. تحميل مسارات الرد الذكي
-    if (letter.correspondenceType === CorrespondenceType.INBOUND && letter.status !== LetterStatus.ARCHIVED && letter.status !== LetterStatus.REPLIED) {
-        setIsLoadingSmartReplies(true);
-        generateSmartReplies(letter)
-            .then(setSmartReplies)
-            .catch((e) => {
-                console.error("Smart replies failed:", e);
-                setSmartReplies([]);
-            })
-            .finally(() => setIsLoadingSmartReplies(false));
-    } else {
-        setSmartReplies([]);
+    try {
+        const brief = await analyzeLetterBrief(letter);
+        dispatch({
+            type: 'UPDATE_LETTER',
+            payload: { ...letter, aiCache: { ...letter.aiCache, brief } }
+        });
+        toast.success("تم توليد الموجز الذكي.");
+    } catch (e: any) {
+        if (e.message?.includes('429') || e.message?.includes('quota')) {
+            toast.error("تم تجاوز حد الطلبات اليومي للذكاء الاصطناعي.");
+        } else {
+            toast.error("فشل توليد الموجز.");
+        }
+    } finally {
+        setIsLoadingBrief(false);
     }
-  }, [letter.id, letter.status, letter.correspondenceType]);
+  };
+
+  const handleGenerateSmartReplies = async () => {
+    setIsLoadingSmartReplies(true);
+    try {
+        const replies = await generateSmartReplies(letter);
+        dispatch({
+            type: 'UPDATE_LETTER',
+            payload: { ...letter, aiCache: { ...letter.aiCache, smartReplies: replies } }
+        });
+        toast.success("تم استخلاص مسارات الرد الذكي.");
+    } catch (e: any) {
+        if (e.message?.includes('429') || e.message?.includes('quota')) {
+            toast.error("تجاوزت حد الكوتا لليوم. حاول غداً.");
+        } else {
+            toast.error("فشل استخلاص الردود.");
+        }
+    } finally {
+        setIsLoadingSmartReplies(false);
+    }
+  };
 
   useEffect(() => {
     setIsEditing(false);
     setEditedBody(letter.body);
     setActiveTab('content');
     setDiffData(null);
-    setSummary(null);
     setNewComment('');
     setPrintableContent(null);
     setShowProofreadModal(false);
-    setAiBrief(null);
-    setSmartReplies([]);
-    loadAiInsights();
-  }, [letter.id, loadAiInsights]);
+  }, [letter.id]);
 
   const handlePrint = () => {
     setPrintableContent(<PrintableLetter letter={letter} settings={settings} />);
@@ -199,9 +210,14 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
       setIsSummarizing(true);
       try {
           const result = await summarizeCorrespondenceThread(threadLetters);
-          setSummary(result);
+          dispatch({
+              type: 'UPDATE_LETTER',
+              payload: { ...letter, aiCache: { ...letter.aiCache, threadSummary: result } }
+          });
           toast.success("تم تلخيص السلسلة");
-      } catch (e) { console.error(e); } finally { setIsSummarizing(false); }
+      } catch (e: any) { 
+          if (e.message?.includes('429')) toast.error("تجاوز حد الطلبات اليومي.");
+      } finally { setIsSummarizing(false); }
   };
 
   const onReply = (letterToReply: Letter, objective?: string, tone?: string) => {
@@ -222,7 +238,9 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
           const suggestions = await enhanceLetter((isEditing ? editedBody : letter.body).replace(/<[^>]*>?/gm, ' '));
           setProofreadSuggestions(suggestions);
           setShowProofreadModal(true);
-      } catch (error) { console.error(error); } finally { setIsProofreading(false); }
+      } catch (error: any) { 
+          if (error.message?.includes('429')) toast.error("تم تجاوز حد كوتا التدقيق.");
+      } finally { setIsProofreading(false); }
   };
 
   const handleViewAttachment = (att: Attachment) => {
@@ -304,6 +322,10 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
     return <div className="flex flex-wrap items-center gap-3">{actions}</div>;
   };
 
+  const aiBrief = letter.aiCache?.brief;
+  const smartReplies = letter.aiCache?.smartReplies || [];
+  const threadSummary = letter.aiCache?.threadSummary;
+
   return (
     <>
     {printRoot && printableContent && createPortal(printableContent, printRoot)}
@@ -315,12 +337,20 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
           <div className="flex items-center justify-between mb-5">
               <div className="flex items-center gap-3">
                   <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400 shadow-inner"><BotIcon className="w-6 h-6" /></div>
-                  <h3 className="text-lg font-black text-white">الموجز التنفيذي للمساعد الذكي</h3>
+                  <h3 className="text-lg font-black text-white">المساعد الذكي</h3>
               </div>
-              {isLoadingBrief && <div className="animate-spin h-5 w-5 border-2 border-indigo-500 border-b-transparent rounded-full"></div>}
+              {!aiBrief && (
+                  <button 
+                    onClick={handleGenerateBrief} 
+                    disabled={isLoadingBrief}
+                    className="text-[10px] font-black bg-indigo-500 text-white px-3 py-1.5 rounded-lg hover:bg-indigo-400 transition-colors shadow-lg shadow-indigo-500/20 disabled:opacity-50"
+                  >
+                      {isLoadingBrief ? 'جاري التحليل...' : 'توليد موجز المعاملة'}
+                  </button>
+              )}
           </div>
           {isLoadingBrief ? <div className="space-y-4 animate-pulse"><div className="h-4 bg-white/5 rounded w-3/4"></div><div className="h-4 bg-white/5 rounded w-1/2"></div></div> : aiBrief ? (
-              <div className="space-y-6">
+              <div className="space-y-6 animate-in fade-in duration-500">
                   <div className="bg-black/30 p-5 rounded-2xl border border-white/5 shadow-inner">
                       <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">جوهر المعاملة</p>
                       <p className="text-sm text-slate-200 leading-relaxed font-bold">{aiBrief.summary}</p>
@@ -336,7 +366,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                       </div>
                   )}
               </div>
-          ) : <p className="text-xs text-slate-500 font-bold">فشل في استرداد التحليل التلقائي للمحتوى.</p>}
+          ) : <p className="text-xs text-slate-500 font-bold">يمكنك طلب تحليل ذكي لهذه المعاملة لاستخراج النقاط الرئيسية.</p>}
       </div>
 
       <div className="glass-card p-6 border border-white/10 shadow-lg"><WorkflowTracker letter={letter} settings={settings} /></div>
@@ -344,13 +374,25 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
       {letter.correspondenceType === CorrespondenceType.INBOUND && letter.status !== LetterStatus.ARCHIVED && letter.status !== LetterStatus.REPLIED && (
           <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-6 shadow-2xl relative overflow-hidden group">
               <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-3"><SparklesIcon className="w-6 h-6 text-indigo-400" /><h3 className="text-xl font-black text-white">مسارات الرد الاستراتيجية</h3></div>
-                  {isLoadingSmartReplies && <div className="flex items-center gap-2 text-indigo-400 text-xs font-bold"><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-indigo-500"></div>جاري التحليل...</div>}
+                  <div className="flex items-center gap-3"><SparklesIcon className="w-6 h-6 text-indigo-400" /><h3 className="text-xl font-black text-white">مسارات الرد الذكي</h3></div>
+                  {!letter.aiCache?.smartReplies && (
+                      <button 
+                        onClick={handleGenerateSmartReplies}
+                        disabled={isLoadingSmartReplies}
+                        className="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-xs font-black shadow-lg shadow-indigo-600/20 transition-all disabled:opacity-50"
+                      >
+                          {isLoadingSmartReplies ? 'جاري التحليل...' : 'استكشاف مسارات الرد'}
+                      </button>
+                  )}
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {smartReplies.length > 0 ? smartReplies.map((reply, i) => (
                       <button key={i} onClick={() => onReply(letter, reply.objective, reply.tone.toString())} className={`p-5 rounded-2xl border text-right flex flex-col gap-3 transition-all group/btn shadow-lg hover:-translate-y-1 ${reply.type === 'positive' ? 'bg-emerald-500/10 border-emerald-500/20 hover:border-emerald-500/50' : reply.type === 'negative' ? 'bg-rose-500/10 border-rose-500/20 hover:border-rose-500/50' : 'bg-indigo-500/5 border-white/10 hover:border-indigo-500/50'}`}><div className="flex items-center justify-between"><span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full ${reply.type === 'positive' ? 'bg-emerald-500/20 text-emerald-400' : reply.type === 'negative' ? 'bg-rose-500/20 text-rose-400' : 'bg-indigo-500/20 text-indigo-300'}`}>{reply.title}</span><SparklesIcon className="w-3 h-3 text-white/20 group-hover/btn:text-white/60 transition-colors" /></div><p className="text-sm font-bold text-white leading-relaxed line-clamp-3 group-hover/btn:line-clamp-none transition-all">{reply.objective}</p><div className="mt-auto pt-3 border-t border-white/5 flex items-center justify-between"><span className="text-[10px] text-slate-500 font-black">النبرة: {reply.tone}</span><span className="text-[10px] text-indigo-400 font-black opacity-0 group-hover/btn:opacity-100 transition-opacity">استخدام المسار ←</span></div></button>
-                  )) : isLoadingSmartReplies ? [1,2,3].map(i => <div key={i} className="h-40 bg-white/5 rounded-2xl animate-pulse border border-white/5"></div>) : <div className="col-span-3 py-6 text-center text-slate-500 font-bold border border-dashed border-white/10 rounded-2xl">لا توجد اقتراحات رد متاحة حالياً.</div>}
+                  )) : isLoadingSmartReplies ? [1,2,3].map(i => <div key={i} className="h-40 bg-white/5 rounded-2xl animate-pulse border border-white/5"></div>) : (
+                      <div className="col-span-3 py-6 text-center text-slate-500 font-bold border border-dashed border-white/10 rounded-2xl">
+                          اضغط على الزر أعلاه لاستكشاف خيارات الرد المقترحة.
+                      </div>
+                  )}
               </div>
           </div>
       )}
@@ -359,7 +401,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
         <div className="glass-card border border-white/10 p-5 overflow-hidden">
              <div className="flex items-center justify-between mb-4"><h3 className="text-lg font-black text-white flex items-center gap-2"><LinkIcon className="w-5 h-5 text-indigo-400" />سلسلة المراسلات المرتبطة</h3><ActionButton text={isSummarizing ? "جاري التلخيص..." : "تلخيص السلسلة"} onClick={handleSummarizeThread} colorClass="text-xs px-3 py-1.5 bg-white/5 text-slate-300 border border-white/5" icon={<FileTextIcon className="w-4 h-4"/>} /></div>
             <div className="space-y-3">{threadLetters.map((tl) => (<div key={tl.id} onClick={() => tl.id !== letter.id && dispatch({ type: 'SELECT_LETTER', payload: tl.id })} className={`p-4 rounded-xl border transition-all cursor-pointer ${tl.id === letter.id ? 'bg-indigo-500/10 border-indigo-500/40 shadow-inner' : 'bg-white/5 border-white/5 hover:bg-white/10'}`}><div className="flex items-center justify-between mb-1"><span className="text-[10px] font-black text-slate-500">{tl.date}</span>{getStatusChip(tl.status)}</div><p className={`text-sm font-bold ${tl.id === letter.id ? 'text-white' : 'text-slate-300'}`}>{tl.subject}</p></div>))}</div>
-            {summary && <div className="mt-6 p-5 bg-slate-950/80 rounded-xl border border-indigo-500/30 text-indigo-100 text-sm leading-relaxed shadow-2xl animate-in zoom-in-95" dangerouslySetInnerHTML={{ __html: summary.replace(/\n/g, '<br/>') }} />}
+            {threadSummary && <div className="mt-6 p-5 bg-slate-950/80 rounded-xl border border-indigo-500/30 text-indigo-100 text-sm leading-relaxed shadow-2xl animate-in zoom-in-95" dangerouslySetInnerHTML={{ __html: threadSummary.replace(/\n/g, '<br/>') }} />}
         </div>
       )}
 
