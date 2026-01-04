@@ -79,7 +79,6 @@ export default function InboundLetterForm(): React.ReactNode {
 
   const theme = getThemeClasses(settings.primaryColor);
   const aiScanInputRef = useRef<HTMLInputElement>(null);
-  const allRecipients = [...settings.departments, ...(settings.externalEntities || [])];
 
   const updateState = (payload: Partial<InboundLetterFormState>) => {
       dispatch({ type: 'UPDATE_INBOUND_FORM_STATE', payload });
@@ -102,14 +101,13 @@ export default function InboundLetterForm(): React.ReactNode {
     if (!file) return;
 
     setIsScanning(true);
-    const scanToast = toast.loading("جاري تحليل الوثيقة...");
+    const scanToast = toast.loading("جاري فحص المستند ذكياً...");
     
     try {
         let base64Data: string;
-        let mimeType: string;
+        let mimeType: string = file.type || "application/pdf";
         
         const dataUrl = await fileToDataURL(file);
-        mimeType = dataUrl.substring(dataUrl.indexOf(":") + 1, dataUrl.indexOf(";"));
         base64Data = dataUrl.split(",")[1];
 
         // معالجة ملفات TIFF بشكل خاص
@@ -150,7 +148,9 @@ export default function InboundLetterForm(): React.ReactNode {
         if (extractedData.summary) updates.summary = extractedData.summary;
         if (extractedData.priority) updates.priority = extractedData.priority as PriorityLevel;
         if (extractedData.confidentiality) updates.confidentiality = extractedData.confidentiality as ConfidentialityLevel;
+        if (extractedData.referenceId) updates.referenceId = extractedData.referenceId;
         
+        // تصحيح التاريخ إذا تم استخراجه
         if (extractedData.date) {
             const d = new Date(extractedData.date);
             if (!isNaN(d.getTime())) {
@@ -158,6 +158,7 @@ export default function InboundLetterForm(): React.ReactNode {
             }
         }
         
+        // تحديث المرفقات لإضافة الملف الممسوح إذا لم يكن موجوداً
         if (!attachments.some(a => a.name === file.name)) {
             updates.attachments = [file, ...attachments];
         }
@@ -165,7 +166,7 @@ export default function InboundLetterForm(): React.ReactNode {
         updateState(updates);
         toast.success("تم استخلاص البيانات بنجاح!", { id: scanToast });
     } catch(error: any) {
-        console.error("OCR Error:", error);
+        console.error("Scan Error:", error);
         toast.error(`حدث خطأ أثناء معالجة الوثيقة: ${error.message || 'خطأ تقني'}`, { id: scanToast });
     } finally {
         setIsScanning(false);
@@ -220,9 +221,9 @@ export default function InboundLetterForm(): React.ReactNode {
     <div className="max-w-4xl mx-auto">
       <div className="flex justify-between items-center mb-1">
         <h2 className="text-2xl font-bold text-white">تسجيل خطاب وارد جديد</h2>
-        <button onClick={() => dispatch({ type: 'RESET_INBOUND_FORM_STATE' })} className="text-xs text-rose-300 font-bold border border-rose-500/30 p-2 rounded hover:bg-rose-500/10 transition-colors">مسح النموذج</button>
+        <button type="button" onClick={() => dispatch({ type: 'RESET_INBOUND_FORM_STATE' })} className="text-xs text-rose-300 font-bold border border-rose-500/30 p-2 rounded hover:bg-rose-500/10 transition-colors">مسح النموذج</button>
       </div>
-      <p className="text-slate-400 font-bold mb-6">أدخل بيانات الخطاب الوارد أو استخدم المسح الضوئي الذكي لتعبئة الحقول تلقائياً.</p>
+      <p className="text-slate-400 font-bold mb-6">أدخل بيانات الخطاب الوارد أو استخدم المسح الضوئي الذكي (PDF/صور) لتعبئة الحقول تلقائياً.</p>
       
       <div className="bg-slate-900/60 p-6 rounded-lg shadow-lg border border-white/10 mt-6">
         <div className="flex justify-center mb-8">
