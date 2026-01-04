@@ -16,6 +16,35 @@ async function sendToAiBackend(payload: any, config: any = {}) {
     return await response.json();
 }
 
+export async function analyzeLetterBrief(letter: Letter): Promise<{ summary: string, keyPoints: string[] }> {
+    const content = letter.body.replace(/<[^>]*>?/gm, ' ');
+    const prompt = `أنت مساعد إداري خبير. حلل الخطاب التالي:
+    الموضوع: ${letter.subject}
+    المحتوى: ${content}
+    
+    المطلوب JSON:
+    - summary: ملخص تنفيذي مركز (سطرين).
+    - keyPoints: قائمة بالفقرات أو النقاط المحددة التي تستوجب الرد أو الإجراء.`;
+
+    const schema = {
+        type: 'OBJECT',
+        properties: {
+            summary: { type: 'STRING' },
+            keyPoints: { type: 'ARRAY', items: { type: 'STRING' } }
+        },
+        required: ["summary", "keyPoints"]
+    };
+
+    try {
+        return await sendToAiBackend(prompt, {
+            responseMimeType: "application/json",
+            responseSchema: schema
+        });
+    } catch (e) {
+        return { summary: "تعذر تلخيص المحتوى حالياً.", keyPoints: [] };
+    }
+}
+
 export async function extractDetailsFromLetterImage(
   base64Image: string,
   mimeType: string,
