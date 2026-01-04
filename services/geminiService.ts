@@ -77,6 +77,12 @@ export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]
     }
 }
 
+export async function refineLetterWithChat(currentBody: string, userInstruction: string, context: string): Promise<string> {
+    const prompt = `الخطاب الحالي: ${currentBody}\n\nالسياق المرجعي: ${context}\n\nتعليمات المستخدم للتعديل: ${userInstruction}\n\nالمطلوب: قم بتعديل نص الخطاب بناءً على التعليمات فقط، وأعد النص الجديد كاملاً بصيغة HTML مبسطة بكلمات عربية متصلة تماماً.`;
+    const result = await sendToAiBackend(prompt, { temperature: 0.3 });
+    return typeof result === 'string' ? result : (result.text || "");
+}
+
 export async function enhanceLetter(text: string): Promise<EnhancementSuggestion[]> {
     const prompt = `حسن الصياغة الإدارية للنص التالي مع إبقاء الكلمات متصلة:\n\n${text}`;
     const schema = {
