@@ -40,7 +40,6 @@ function dataURLtoBlob(dataurl: string): Blob | null {
     }
 }
 
-// @FIX: Added missing fileToDataURL helper
 const fileToDataURL = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -117,16 +116,27 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   );
 
   const loadAiInsights = useCallback(async () => {
+    // تحميل التحليل الموجز
     setIsLoadingBrief(true);
-    analyzeLetterBrief(letter).then(setAiBrief).finally(() => setIsLoadingBrief(false));
+    analyzeLetterBrief(letter)
+        .then(setAiBrief)
+        .catch(() => setAiBrief({ summary: "تعذر تحميل التحليل الذكي.", keyPoints: [] }))
+        .finally(() => setIsLoadingBrief(false));
 
+    // تحميل مسارات الرد الذكي إذا كان وارداً وبحاجة لرد
     if (letter.correspondenceType === CorrespondenceType.INBOUND && letter.status !== LetterStatus.ARCHIVED && letter.status !== LetterStatus.REPLIED) {
         setIsLoadingSmartReplies(true);
-        generateSmartReplies(letter).then(setSmartReplies).finally(() => setIsLoadingSmartReplies(false));
+        generateSmartReplies(letter)
+            .then(setSmartReplies)
+            .catch((e) => {
+                console.error("Smart replies failed:", e);
+                setSmartReplies([]);
+            })
+            .finally(() => setIsLoadingSmartReplies(false));
     } else {
         setSmartReplies([]);
     }
-  }, [letter.id]);
+  }, [letter.id, letter.status, letter.correspondenceType]);
 
   useEffect(() => {
     setIsEditing(false);
@@ -138,6 +148,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
     setPrintableContent(null);
     setShowProofreadModal(false);
     setAiBrief(null);
+    setSmartReplies([]);
     loadAiInsights();
   }, [letter.id, loadAiInsights]);
 
@@ -215,7 +226,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
       } catch (error) { console.error(error); } finally { setIsProofreading(false); }
   };
 
-  // @FIX: Added missing handleViewAttachment function
   const handleViewAttachment = (att: Attachment) => {
     if (!att.url || att.url === '#') {
         toast('المعاينة غير متاحة للمرفقات التجريبية.', { icon: 'ℹ️' });
@@ -232,7 +242,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
     }
   };
 
-  // @FIX: Added missing handleAddAttachment function
   const handleAddAttachment = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const file = e.target.files[0];
@@ -384,7 +393,18 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                 </div>
             )}
             {activeTab === 'comments' && (
-                <div className="max-w-3xl space-y-6">{letterComments.length > 0 ? <ul className="space-y-6">{letterComments.map(comment => (<li key={comment.id} className="flex items-start gap-4"><div className="flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white bg-indigo-600/30 border border-indigo-500/30">خ</div><div className="flex-grow bg-white/5 p-5 rounded-2xl border border-white/10 shadow-lg"><div className="flex justify-between items-center mb-2"><p className="font-black text-sm text-slate-200">نظام خطابي</p><p className="text-[10px] font-bold text-slate-500">{comment.createdAt}</p></div><p className="text-base font-medium text-slate-300 whitespace-pre-wrap leading-relaxed">{comment.text}</p></div></li>))}</ul> : <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10"><p className="text-slate-500 font-bold">لا توجد ملاحظات على هذه المعاملة بعد.</p></div>}<div className="relative mt-8"><textarea rows={4} value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="أضف ملاحظة توجيهية..." className="w-full px-5 py-4 bg-slate-900/60 text-white border border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 text-base font-medium placeholder-slate-500 shadow-inner" /><div className="mt-3 text-left"><button onClick={handleAddComment} className={`px-8 py-2.5 text-sm font-black text-white rounded-xl shadow-xl transition-all active:scale-95 ${theme.bg}`} disabled={!newComment.trim()}>إرسال الملاحظة</button></div></div></div>
+                <div className="max-w-3xl space-y-6">{letterComments.length > 0 ? <ul className="space-y-6">{letterComments.map(comment => (
+                                <li key={comment.id} className="flex items-start gap-4">
+                                    <div className={`flex-shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center font-black text-white bg-indigo-600/30 border border-indigo-500/30`}>خ</div>
+                                    <div className="flex-grow bg-white/5 p-5 rounded-2xl border border-white/10 shadow-lg">
+                                        <div className="flex justify-between items-center mb-2">
+                                            <p className="font-black text-sm text-slate-200">نظام خطابي</p>
+                                            <p className="text-[10px] font-bold text-slate-500">{comment.createdAt}</p>
+                                        </div>
+                                        <p className="text-base font-medium text-slate-300 whitespace-pre-wrap leading-relaxed">{comment.text}</p>
+                                    </div>
+                                </li>
+                             ))}</ul> : <div className="text-center py-20 bg-white/5 rounded-3xl border border-dashed border-white/10"><p className="text-slate-500 font-bold">لا توجد ملاحظات على هذه المعاملة بعد.</p></div>}<div className="relative mt-8"><textarea rows={4} value={newComment} onChange={e => setNewComment(e.target.value)} placeholder="أضف ملاحظة توجيهية..." className="w-full px-5 py-4 bg-slate-900/60 text-white border border-slate-700 rounded-2xl focus:ring-2 focus:ring-indigo-500 text-base font-medium placeholder-slate-500 shadow-inner" /><div className="mt-3 text-left"><button onClick={handleAddComment} className={`px-8 py-2.5 text-sm font-black text-white rounded-xl shadow-xl transition-all active:scale-95 ${theme.bg}`} disabled={!newComment.trim()}>إرسال الملاحظة</button></div></div></div>
             )}
             {activeTab === 'history' && (
                 <div className="max-w-4xl py-6"><ul className="space-y-8 border-r-2 border-slate-700 pr-8 relative">{letter.approvalHistory.map((record, index) => (<li key={index} className="flex items-start gap-6 group"><div className="absolute -right-[0.55rem] top-1 w-4 h-4 rounded-full bg-slate-950 border-2 border-indigo-500 group-hover:scale-125 transition-transform"></div><div className="flex-grow bg-white/5 p-5 rounded-2xl border border-white/5 hover:border-indigo-500/20 transition-all"><p className="font-black text-lg text-slate-200">{record.action}</p><div className="flex items-center gap-4 mt-1"><p className="text-[10px] font-black text-slate-500 flex items-center gap-1"><ClockIcon className="w-3 h-3" />{record.date}</p>{record.userName && <p className="text-[10px] font-black text-indigo-400">بواسطة: {record.userName}</p>}</div>{record.notes && <div className="mt-4 text-sm font-medium text-slate-300 bg-white/5 p-4 rounded-xl border border-white/10 leading-relaxed"><strong className="text-indigo-300">ملاحظات:</strong> {record.notes}</div>}{record.previousBody && <button onClick={() => setDiffData({ old: record.previousBody || '', new: letter.body })} className="text-xs font-black text-indigo-400 hover:text-indigo-300 mt-4 flex items-center gap-1">عرض مقارنة التغييرات ←</button>}</div></li>))}</ul></div>
