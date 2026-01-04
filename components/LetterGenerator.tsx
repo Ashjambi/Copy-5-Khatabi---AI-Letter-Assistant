@@ -1,17 +1,21 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../App';
-import { LetterType, Tone, SmartReply } from '../types';
+import { Letter, LetterType, Tone, PriorityLevel, ConfidentialityLevel, GeneratorState, LetterVariations, SmartReply } from '../types';
 import { generateSmartReplies, generateLetterVariations, refineLetterWithChat } from '../services/geminiService';
 import { toast } from 'react-hot-toast';
 import { getThemeClasses, sanitizeHTML } from './utils';
 import RichTextEditor from './RichTextEditor';
-import { SparklesIcon, BotIcon, InboxInIcon, CheckCircleIcon, Undo2Icon, MessageSquareIcon, SendIcon, UserIcon, FileTextIcon } from './icons';
+import MultiSelectCombobox from './MultiSelectCombobox';
+import { SparklesIcon, FileTextIcon, BotIcon, InboxInIcon, CheckCircleIcon, ArrowRightLeftIcon, Undo2Icon, MessageSquareIcon, SendIcon, UserIcon } from './icons';
 
 export default function LetterGenerator() {
     const { state, dispatch } = useApp();
     const { generatorState, learnedPrinciples, companySettings, letters } = state;
-    const { sender, receiver, subject, cc, priority, confidentiality, completionDays, notes, tone, letterType, originalLetterContent, referenceId, objective } = generatorState;
+    const {
+        sender, receiver, subject, cc, priority, confidentiality,
+        completionDays, notes, tone, letterType, originalLetterContent, referenceId, objective
+    } = generatorState;
 
     const theme = getThemeClasses(companySettings.primaryColor);
     const [step, setStep] = useState(0); 
@@ -46,7 +50,10 @@ export default function LetterGenerator() {
         setIsLoading(true);
         try {
             const result = await generateLetterVariations({
-                isReply: isReplyMode, originalContent: originalLetterContent, objective: objectiveText, sender, receiver, subject,
+                isReply: isReplyMode, 
+                originalContent: originalLetterContent, 
+                objective: objectiveText, 
+                sender, receiver, subject,
                 principles: learnedPrinciples.map(p => p.text).join(' | ')
             });
             setGeneratedContent(result);
@@ -61,12 +68,10 @@ export default function LetterGenerator() {
         setChatMessages(prev => [...prev, {role: 'user', text: instruction}]);
         setIsLoading(true);
         try {
-            // استخدام سياق الخطاب المرجعي + المتن الحالي لتنفيذ طلب المستخدم
             const context = `الموضوع: ${subject} | المرجع: ${originalLetterContent}`;
             const newBody = await refineLetterWithChat(finalBody, instruction, context);
             setFinalBody(newBody);
-            setChatMessages(prev => [...prev, {role: 'ai', text: 'تم تحديث المتن بناءً على تعليماتك بنجاح.'}]);
-            toast.success("تم تحديث المسودة");
+            setChatMessages(prev => [...prev, {role: 'ai', text: 'تم تحديث المتن بناءً على تعليماتك.'}]);
         } catch (e) {
             toast.error("تعذر تحديث النص.");
         } finally {
@@ -75,24 +80,33 @@ export default function LetterGenerator() {
     };
 
     const handleFinalSave = () => {
-        dispatch({ type: 'CREATE_LETTER', payload: { newLetterData: { subject, from: sender, to: receiver, body: finalBody, type: letterType, tone, attachments: [], cc, priority, confidentiality, completionDays: Number(completionDays) || undefined, notes } } });
-        toast.success("تم اعتماد وحفظ الخطاب بنجاح.");
+        dispatch({ 
+            type: 'CREATE_LETTER', 
+            payload: { 
+                newLetterData: { 
+                    subject, from: sender, to: receiver, body: finalBody, 
+                    type: letterType, tone, attachments: [], cc, priority, 
+                    confidentiality, completionDays: Number(completionDays) || undefined, notes 
+                } 
+            } 
+        });
+        toast.success("تم اعتماد المعاملة وحفظها.");
     };
 
     return (
-        <div className="max-w-[1600px] mx-auto pb-10">
-            <div className="flex justify-between items-center mb-8 px-2">
-                <div className="space-y-1">
-                    <h2 className="text-2xl font-black text-white tracking-tight">مساعد الصياغة الاحترافي</h2>
-                    <div className="flex items-center gap-3">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-white/5 px-2 py-0.5 rounded border border-white/5">
-                            {isReplyMode ? 'مسار الرد الاستراتيجي' : 'إنشاء خطاب جديد'}
-                        </span>
-                        {isReplyMode && <span className="text-indigo-400 text-[10px] font-bold">مرجع: {parentLetter?.internalRefNumber}</span>}
+        <div className="max-w-[1700px] mx-auto pb-12">
+            <div className="flex justify-between items-end mb-8 px-2">
+                <div>
+                    <h2 className="text-3xl font-black text-white tracking-tight">مساعد الصياغة الذكي</h2>
+                    <div className="flex items-center gap-3 mt-2">
+                         <span className="bg-indigo-500/10 text-indigo-400 px-2.5 py-1 rounded-lg text-[11px] font-black border border-indigo-500/20 flex items-center gap-2">
+                             {isReplyMode ? 'نمط الرد الاستراتيجي' : 'نمط الإنشاء الجديد'}
+                         </span>
+                         {isReplyMode && <span className="text-slate-500 text-[11px] font-bold">• المرجع: {parentLetter?.internalRefNumber}</span>}
                     </div>
                 </div>
                 {step > 0 && (
-                    <button onClick={() => setStep(step - 1)} className="text-[11px] font-black text-slate-400 hover:text-white flex items-center gap-2 bg-white/5 px-4 py-2 rounded-xl border border-white/5 transition-all hover:scale-105 active:scale-95">
+                    <button onClick={() => setStep(step - 1)} className="btn-3d-secondary px-5 py-2.5 flex items-center gap-2 text-xs font-black hover:scale-105 transition-all">
                         <Undo2Icon className="w-4 h-4" /> العودة للخطوة السابقة
                     </button>
                 )}
@@ -100,9 +114,9 @@ export default function LetterGenerator() {
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
                 
-                {/* المعاين المرجعي (الخطاب الوارد) */}
+                {/* --- Inbound Context View --- */}
                 {isReplyMode && parentLetter && (
-                    <div className="lg:col-span-3 lg:sticky lg:top-6 transition-all">
+                    <div className="lg:col-span-3 lg:sticky lg:top-6">
                         <div className="glass-card border-indigo-500/10 bg-slate-950/40 shadow-2xl rounded-3xl overflow-hidden">
                             <div className="p-4 bg-indigo-500/10 border-b border-white/5 flex items-center gap-2 text-indigo-400">
                                 <InboxInIcon className="w-5 h-5" />
@@ -110,16 +124,15 @@ export default function LetterGenerator() {
                             </div>
                             <div className="p-5 space-y-4">
                                 <h3 className="text-base font-black text-slate-100 leading-tight border-b border-white/5 pb-3">{parentLetter.subject}</h3>
-                                <div className="text-[13px] text-slate-400 leading-[1.8] max-h-[500px] overflow-y-auto custom-scrollbar prose prose-invert prose-sm font-medium" dangerouslySetInnerHTML={{ __html: sanitizeHTML(parentLetter.body) }} />
+                                <div className="text-[13px] text-slate-400 leading-[1.8] max-h-[550px] overflow-y-auto custom-scrollbar prose prose-invert prose-sm font-medium" dangerouslySetInnerHTML={{ __html: sanitizeHTML(parentLetter.body) }} />
                             </div>
                         </div>
                     </div>
                 )}
 
-                {/* منطقة العمل الرئيسية */}
+                {/* --- Main Workspace --- */}
                 <div className={`${isReplyMode ? 'lg:col-span-9' : 'lg:col-span-12'}`}>
                     
-                    {/* الخطوة 0: تحديد التوجه الاستراتيجي */}
                     {step === 0 && (
                         <div className="glass-card p-8 space-y-8 animate-in slide-in-from-bottom-4 duration-500 border-white/10 rounded-[2.5rem]">
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-900/60 p-6 rounded-3xl border border-white/5 shadow-inner">
@@ -147,11 +160,7 @@ export default function LetterGenerator() {
                                         </p>
                                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                             {smartReplies.map((reply, i) => (
-                                                <button 
-                                                    key={i} 
-                                                    onClick={() => { setObjectiveText(reply.objective); dispatch({type:'UPDATE_GENERATOR_STATE', payload:{tone: reply.tone as Tone}}); }} 
-                                                    className={`p-5 rounded-2xl border text-right transition-all group flex flex-col justify-between min-h-[120px] shadow-lg ${objectiveText === reply.objective ? 'bg-indigo-600/20 border-indigo-500 ring-2 ring-indigo-500/20' : 'bg-white/5 border-white/5 hover:border-indigo-500/40'}`}
-                                                >
+                                                <button key={i} onClick={() => { setObjectiveText(reply.objective); dispatch({type:'UPDATE_GENERATOR_STATE', payload:{tone: reply.tone as Tone}}); }} className={`p-5 rounded-2xl border text-right transition-all group flex flex-col justify-between min-h-[120px] shadow-lg ${objectiveText === reply.objective ? 'bg-indigo-600/20 border-indigo-500 ring-2 ring-indigo-500/20' : 'bg-white/5 border-white/5 hover:border-indigo-500/40'}`}>
                                                     <span className={`block text-[9px] font-black uppercase mb-3 tracking-widest ${objectiveText === reply.objective ? 'text-indigo-400' : 'text-slate-500'}`}>{reply.title}</span>
                                                     <span className={`text-[13px] font-bold leading-relaxed ${objectiveText === reply.objective ? 'text-white' : 'text-slate-300'}`}>{reply.objective}</span>
                                                 </button>
@@ -176,14 +185,13 @@ export default function LetterGenerator() {
                         </div>
                     )}
 
-                    {/* الخطوة 1: اختيار المسودة الأساسية */}
                     {step === 1 && generatedContent && (
                         <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
                              <div className="bg-indigo-500/10 border border-indigo-500/20 p-6 rounded-3xl flex items-start gap-5 shadow-2xl relative">
                                 <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
                                 <div className="p-3 bg-indigo-500/20 rounded-xl text-indigo-400 shrink-0"><BotIcon className="w-8 h-8" /></div>
                                 <div className="space-y-2">
-                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">تحليل المسار الاستراتيجي</p>
+                                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest">توصية الخبير الإداري</p>
                                     <p className="text-base text-slate-100 font-bold leading-relaxed">{generatedContent.analysis.strategic_feedback[0]}</p>
                                 </div>
                              </div>
@@ -191,10 +199,10 @@ export default function LetterGenerator() {
                              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                                 {(['neutral', 'strict', 'diplomatic'] as const).map(v => (
                                     <div key={v} className="bg-slate-900/60 rounded-[2.5rem] border border-white/5 flex flex-col overflow-hidden transition-all hover:border-indigo-500/50 group/card">
-                                        <div className="p-5 bg-white/5 text-center font-black text-[11px] text-slate-400 uppercase border-b border-white/5 tracking-widest group-hover/card:text-indigo-400 transition-colors">
+                                        <div className="p-5 bg-white/5 text-center font-black text-[11px] text-slate-400 uppercase border-b border-white/5 tracking-widest">
                                             {v === 'neutral' ? 'صيغة رسمية معتدلة' : v === 'strict' ? 'صيغة رسمية حازمة' : 'صيغة دبلوماسية مرنة'}
                                         </div>
-                                        <div className="p-7 flex-grow text-sm text-slate-300 leading-[1.8] font-bold h-[350px] overflow-y-auto custom-scrollbar prose prose-invert prose-sm" dangerouslySetInnerHTML={{ __html: sanitizeHTML(generatedContent.variations[v]) }} />
+                                        <div className="p-7 flex-grow text-sm text-slate-300 leading-[1.8] font-bold h-[400px] overflow-y-auto custom-scrollbar prose prose-invert prose-sm" dangerouslySetInnerHTML={{ __html: sanitizeHTML(generatedContent.variations[v]) }} />
                                         <div className="p-5 bg-white/5">
                                             <button onClick={() => { setFinalBody(generatedContent.variations[v]); setStep(2); }} className={`w-full py-4 rounded-2xl font-black text-sm transition-all shadow-xl ${theme.bg} text-white hover:scale-105 active:scale-95`}>
                                                 اعتماد هذا المسار
@@ -206,7 +214,7 @@ export default function LetterGenerator() {
                         </div>
                     )}
 
-                    {/* الخطوة 2 (الأخيرة): المحرر النهائي والدردشة للتنقيح */}
+                    {/* Step 2: FINAL polish with Chat Integrated */}
                     {step === 2 && (
                         <div className="space-y-8 animate-in slide-in-from-right-10 duration-700">
                              <div className="flex items-center justify-between px-2">
@@ -214,20 +222,20 @@ export default function LetterGenerator() {
                                     <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
                                     <h3 className="text-xl font-black text-white uppercase tracking-tight">التحرير النهائي والتنقيح بالحوار</h3>
                                 </div>
-                                <span className="text-[10px] font-black text-slate-500 bg-white/5 px-4 py-1.5 rounded-full border border-white/5 uppercase tracking-widest">المسودة المعتمدة</span>
+                                <span className="text-[10px] font-black text-slate-500 bg-white/5 px-4 py-1.5 rounded-full border border-white/5 uppercase tracking-widest">مرحلة الاعتماد</span>
                              </div>
                              
                              <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-                                {/* المحرر */}
+                                {/* Editor Column */}
                                 <div className="xl:col-span-8 space-y-6">
                                     <div className="shadow-[0_20px_50px_rgba(0,0,0,0.4)] rounded-3xl overflow-hidden border border-white/10">
-                                        <RichTextEditor value={finalBody} onChange={setFinalBody} ringColor={theme.ring} minHeight="min-h-[650px]" />
+                                        <RichTextEditor value={finalBody} onChange={setFinalBody} ringColor={theme.ring} minHeight="min-h-[700px]" />
                                     </div>
                                     
                                     <div className="bg-slate-900/40 p-6 rounded-3xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
                                         <div className="flex-1">
                                             <p className="text-sm font-bold text-slate-300">هل اكتملت الصياغة؟</p>
-                                            <p className="text-[11px] text-slate-500 font-bold mt-1">تأكد من مراجعة كافة الفقرات قبل الاعتماد النهائي والحفظ في سجل الصادر.</p>
+                                            <p className="text-[11px] text-slate-500 font-bold mt-1">تأكد من مراجعة كافة الفقرات قبل الاعتماد النهائي.</p>
                                         </div>
                                         <button onClick={handleFinalSave} className="px-16 py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-lg shadow-2xl shadow-emerald-600/20 transition-all flex items-center gap-3 active:scale-95 group">
                                             <CheckCircleIcon className="w-6 h-6 group-hover:scale-110 transition-transform" /> اعتماد وحفظ المعاملة
@@ -235,24 +243,23 @@ export default function LetterGenerator() {
                                     </div>
                                 </div>
 
-                                {/* الدردشة للتنقيح (الخطوة الأخيرة) */}
+                                {/* Chat Poland Column */}
                                 <div className="xl:col-span-4 lg:sticky lg:top-6 space-y-6">
-                                    <div className="glass-card border-indigo-500/30 bg-slate-950/60 p-6 rounded-[2.5rem] flex flex-col h-[780px] shadow-3xl">
+                                    <div className="glass-card border-indigo-500/30 bg-slate-950/60 p-6 rounded-[2.5rem] flex flex-col h-[835px] shadow-3xl">
                                         <div className="flex items-center gap-4 border-b border-white/5 pb-5 mb-5">
                                             <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 shadow-inner"><MessageSquareIcon className="w-6 h-6" /></div>
                                             <div>
-                                                <h3 className="text-base font-black text-white">منصة تنقيح المسودة</h3>
-                                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">التحاور مع الخبير الإداري</p>
+                                                <h3 className="text-base font-black text-white">منصة الحوار والتنقيح</h3>
+                                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">تحدث مع الخبير الإداري لتعديل المتن</p>
                                             </div>
                                         </div>
 
-                                        {/* مساحة رسائل الحوار */}
                                         <div className="flex-1 overflow-y-auto custom-scrollbar space-y-5 px-1 pb-4">
                                             {chatMessages.length === 0 && (
                                                 <div className="h-full flex flex-col items-center justify-center opacity-20 text-center px-6">
                                                     <BotIcon className="w-16 h-16 mb-4" />
                                                     <p className="text-sm font-black">المسودة جاهزة للمراجعة.</p>
-                                                    <p className="text-[11px] font-bold mt-2 leading-relaxed">يمكنك طلب تعديلات مثل: "اختصر الفقرة الأولى" أو "أضف بنوداً بخصوص المواعيد".</p>
+                                                    <p className="text-[11px] font-bold mt-2 leading-relaxed">اطلب تعديلات مثل: "اختصر الفقرة الأولى" أو "أضف بنوداً بخصوص المواعيد". سيتم تحديث المحرر آلياً.</p>
                                                 </div>
                                             )}
                                             {chatMessages.map((msg, i) => (
@@ -266,7 +273,6 @@ export default function LetterGenerator() {
                                             <div ref={chatEndRef} />
                                         </div>
                                         
-                                        {/* مدخل الدردشة */}
                                         <div className="mt-4 pt-4 border-t border-white/5">
                                             <div className="relative group">
                                                 <textarea 
@@ -285,7 +291,6 @@ export default function LetterGenerator() {
                                                     {isLoading ? <div className="animate-spin h-5 w-5 border-2 border-white/20 border-b-white rounded-full"></div> : <SendIcon className="w-5 h-5 rotate-180" />}
                                                 </button>
                                             </div>
-                                            <p className="text-[9px] text-slate-600 font-bold mt-3 text-center uppercase tracking-widest">يتم تحديث المحرر مباشرة بعد الحوار</p>
                                         </div>
                                     </div>
                                 </div>

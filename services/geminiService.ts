@@ -1,6 +1,7 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone } from "../types";
+// @FIX: Added SmartSearchResult to imports to fix error in Archive.tsx
+import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone, SmartSearchResult } from "../types";
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
@@ -10,20 +11,22 @@ export async function analyzeLetterBrief(letter: Letter): Promise<{ summary: str
     
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `أنت مساعد إداري خبير. حلل الخطاب التالي بدقة:
+        contents: `أنت مساعد إداري خبير. حلل الخطاب التالي بدقة واستخرج موجزاً إدارياً:
         الموضوع: ${letter.subject}
         المحتوى: ${content}
         
         المطلوب JSON:
         - summary: ملخص تنفيذي مركز (سطرين بكلمات متصلة).
-        - keyPoints: قائمة بالفقرات أو النقاط المحددة التي تستوجب الرد أو الإجراء.`,
+        - keyPoints: قائمة بالفقرات أو النقاط المحددة التي تستوجب الرد أو الإجراء القانوني/الإداري.`,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    summary: { type: 'STRING' },
-                    keyPoints: { type: 'ARRAY', items: { type: 'STRING' } }
+                    // @FIX: Using Type.STRING for schema definition
+                    summary: { type: Type.STRING },
+                    // @FIX: Using Type.ARRAY and Type.STRING for schema definition
+                    keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } }
                 },
                 required: ["summary", "keyPoints"]
             }
@@ -125,7 +128,7 @@ export async function refineLetterWithChat(currentBody: string, userInstruction:
     السياق المرجعي: ${context}
     تعليمات المستخدم للتعديل: ${userInstruction}
     
-    المطلوب: قم بتعديل نص الخطاب بناءً على التعليمات فقط، وأعد النص الجديد كاملاً بصيغة HTML مبسطة بكلمات عربية متصلة تماماً. حافظ على الطابع الرسمي.`;
+    المطلوب: قم بتعديل نص الخطاب بناءً على التعليمات فقط، وأعد النص الجديد كاملاً بصيغة HTML مبسطة بكلمات عربية متصلة تماماً. حافظ على الطابع الرسمي والرصين.`;
 
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -139,7 +142,7 @@ export async function enhanceLetter(text: string): Promise<EnhancementSuggestion
     const ai = getAI();
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
-        contents: `راجع النص وقدم اقتراحات تحسين (كلمات متصلة):\n\n${text}`,
+        contents: `راجع النص وقدم اقتراحات تحسين إدارية بكلمات متصلة:\n\n${text}`,
         config: {
             responseMimeType: "application/json",
             responseSchema: {
@@ -182,8 +185,10 @@ export async function getFollowUpSummary(letters: Letter[]): Promise<FollowUpIte
                 items: {
                     type: Type.OBJECT,
                     properties: {
-                        letterId: { type: 'STRING' },
-                        summary: { type: 'STRING' }
+                        // @FIX: Using Type.STRING for schema definition
+                        letterId: { type: Type.STRING },
+                        // @FIX: Using Type.STRING for schema definition
+                        summary: { type: Type.STRING }
                     }
                 }
             }
@@ -192,23 +197,12 @@ export async function getFollowUpSummary(letters: Letter[]): Promise<FollowUpIte
     return JSON.parse(response.text || "[]");
 }
 
-export async function searchLettersSmartly(query: string, letters: Letter[]): Promise<any[]> {
-    const ai = getAI();
-    const list = letters.map(l => ({ id: l.id, subject: l.subject }));
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `ابحث سياقياً عن "${query}" في: ${JSON.stringify(list)}`,
-        config: { responseMimeType: "application/json" }
-    });
-    return JSON.parse(response.text || "[]");
-}
-
 export async function generateLetterVariations(context: any) {
     const ai = getAI();
     const systemInstruction = `أنت خبير صياغة إدارية. كلمات متصلة. 3 مسودات HTML. الأسلوب: ${context.principles}`;
     const prompt = context.isReply 
-        ? `رد على: ${context.originalContent}. التوجيه: ${context.objective}. من ${context.sender} إلى ${context.receiver}.`
-        : `إنشاء خطاب: ${context.subject}. المحتوى: ${context.objective}.`;
+        ? `رد على: ${context.originalContent}. التوجيه: ${context.objective}. من ${context.sender} إلى ${context.receiver}. الموضوع: ${context.subject}.`
+        : `إنشاء خطاب: ${context.subject}. المحتوى: ${context.objective}. المرسل: ${context.sender} | المستلم: ${context.receiver}.`;
 
     const response = await ai.models.generateContent({
         model: "gemini-3-flash-preview",
@@ -219,18 +213,52 @@ export async function generateLetterVariations(context: any) {
             responseSchema: {
                 type: Type.OBJECT,
                 properties: {
-                    analysis: { type: 'OBJECT', properties: { strategic_feedback: { type: 'ARRAY', items: { type: 'STRING' } } } },
+                    // @FIX: Using Type constants for schema definition
+                    analysis: { type: Type.OBJECT, properties: { strategic_feedback: { type: Type.ARRAY, items: { type: Type.STRING } } } },
                     variations: {
-                        type: 'OBJECT',
+                        type: Type.OBJECT,
                         properties: { 
-                            neutral: { type: 'STRING' }, 
-                            strict: { type: 'STRING' }, 
-                            diplomatic: { type: 'STRING' } 
-                        }
+                            neutral: { type: Type.STRING }, 
+                            strict: { type: Type.STRING }, 
+                            diplomatic: { type: Type.STRING } 
+                        },
+                        required: ["neutral", "strict", "diplomatic"]
                     }
                 }
             }
         }
     });
     return JSON.parse(response.text || "{}");
+}
+
+// @FIX: Added missing searchLettersSmartly function to fix error in Archive.tsx
+export async function searchLettersSmartly(query: string, letters: Letter[]): Promise<SmartSearchResult[]> {
+    const ai = getAI();
+    const list = letters.map(l => ({ id: l.id, subject: l.subject }));
+    
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `أنت مساعد بحث إداري ذكي. ابحث سياقياً عن "${query}" في القائمة التالية وأرجع النتائج المرتبطة. القائمة: ${JSON.stringify(list)}`,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.ARRAY,
+                items: {
+                    type: Type.OBJECT,
+                    properties: {
+                        letterId: { type: Type.STRING },
+                        relevanceReason: { type: Type.STRING },
+                        confidenceScore: { type: Type.NUMBER }
+                    },
+                    required: ["letterId", "relevanceReason", "confidenceScore"]
+                }
+            }
+        }
+    });
+
+    try {
+        return JSON.parse(response.text || "[]");
+    } catch (e) {
+        return [];
+    }
 }

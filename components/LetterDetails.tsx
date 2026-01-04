@@ -6,11 +6,11 @@ import { generateSmartReplies, analyzeLetterBrief } from '../services/geminiServ
 import RichTextEditor from './RichTextEditor';
 import { useApp } from '../App';
 import { getThemeClasses, getStatusChip, getPriorityChip, sanitizeHTML, getConfidentialityChip } from './utils';
-import { ClockIcon, SendIcon, FileTextIcon, SparklesIcon, BotIcon, InfoIcon, ShieldCheckIcon, PrinterIcon } from './icons';
+import { ClockIcon, SendIcon, FileTextIcon, SparklesIcon, BotIcon, InfoIcon, ShieldCheckIcon, PrinterIcon, LinkIcon } from './icons';
 
 export default function LetterDetails({ letter }: { letter: Letter }) {
   const { state, dispatch } = useApp();
-  const { letters: allLetters, companySettings: settings } = state;
+  const { companySettings: settings } = state;
   
   const [isEditing, setIsEditing] = useState(false);
   const [editedBody, setEditedBody] = useState(letter.body);
@@ -26,10 +26,12 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
     setLoadingBrief(true);
     setLoadingReplies(true);
     
-    // جلب الموجز والتحليل للمتن
-    analyzeLetterBrief(letter).then(setAiBrief).finally(() => setLoadingBrief(false));
+    // تحليل متن الخطاب لاستخراج الموجز والفقرات الهامة
+    analyzeLetterBrief(letter).then(setAiBrief).catch(() => {
+        setAiBrief({ summary: "تعذر استخراج الموجز حالياً.", keyPoints: [] });
+    }).finally(() => setLoadingBrief(false));
     
-    // جلب الردود الذكية إذا كان الخطاب وارداً ولم يتم الرد عليه
+    // جلب الردود الذكية إذا كان وارداً
     if (letter.correspondenceType === CorrespondenceType.INBOUND && letter.status !== LetterStatus.REPLIED) {
         generateSmartReplies(letter).then(setSmartReplies).finally(() => setLoadingReplies(false));
     } else { 
@@ -56,8 +58,8 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
         type: 'SET_REPLY_CONTEXT',
         payload: {
             letterId: letter.id,
-            sender: letter.to, // الرد يكون من المستلم الأصلي
-            recipient: letter.from, // إلى المرسل الأصلي
+            sender: letter.to,
+            recipient: letter.from,
             subject: `رد على: ${letter.subject}`,
             mode: 'reply',
             objective: reply.objective,
@@ -68,7 +70,7 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
 
   return (
     <div className="p-4 lg:p-8 space-y-8 animate-in fade-in duration-500">
-      {/* رأس الصفحة والهوية */}
+      {/* Header Section */}
       <div className="flex flex-col md:flex-row justify-between items-start gap-4 border-b border-white/5 pb-6">
         <div className="space-y-1">
             <div className="flex items-center gap-3">
@@ -92,9 +94,9 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">
           <div className="lg:col-span-3 space-y-8">
             
-            {/* بطاقة التحليل الذكي الفوري */}
+            {/* AI Analysis Card (The Briefing) */}
             <div className="bg-indigo-500/5 border border-indigo-500/10 p-6 rounded-3xl relative overflow-hidden group">
-                <div className="absolute top-0 left-0 w-1 h-full bg-indigo-500 opacity-50"></div>
+                <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500 opacity-50"></div>
                 <div className="flex items-center justify-between mb-5">
                     <div className="flex items-center gap-3">
                         <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400"><BotIcon className="w-6 h-6" /></div>
@@ -104,23 +106,24 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
                 </div>
 
                 {loadingBrief ? (
-                    <div className="space-y-3 animate-pulse">
+                    <div className="space-y-4 animate-pulse">
                         <div className="h-4 bg-white/5 rounded w-3/4"></div>
                         <div className="h-4 bg-white/5 rounded w-1/2"></div>
+                        <div className="h-4 bg-white/5 rounded w-2/3"></div>
                     </div>
                 ) : aiBrief ? (
                     <div className="space-y-6">
-                        <div className="bg-black/20 p-4 rounded-2xl border border-white/5">
+                        <div className="bg-black/20 p-5 rounded-2xl border border-white/5">
                             <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">الملخص التنفيذي للمتن</p>
                             <p className="text-sm text-slate-200 leading-relaxed font-bold">{aiBrief.summary}</p>
                         </div>
                         {aiBrief.keyPoints.length > 0 && (
                             <div>
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-1">فقرات ونقاط تتطلب رداً أو إجراءً:</p>
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3 px-1">نقاط جوهرية تتطلب رداً أو إجراءً:</p>
                                 <ul className="space-y-3">
                                     {aiBrief.keyPoints.map((point, i) => (
                                         <li key={i} className="flex items-start gap-3 text-[13px] text-slate-300 font-bold group/item">
-                                            <span className="mt-1.5 w-1.5 h-1.5 bg-indigo-500 rounded-full shrink-0 group-hover/item:scale-125 transition-transform"></span>
+                                            <span className="mt-1.5 w-2 h-2 bg-indigo-500 rounded-full shrink-0 group-hover/item:scale-125 transition-transform shadow-[0_0_8px_rgba(99,102,241,0.5)]"></span>
                                             <span className="leading-relaxed">{point}</span>
                                         </li>
                                     ))}
@@ -129,23 +132,23 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
                         )}
                     </div>
                 ) : (
-                    <p className="text-xs text-slate-500 font-bold">فشل في استرداد التحليل التلقائي للمحتوى.</p>
+                    <p className="text-xs text-slate-500 font-bold">انقر على "تحديث" لإعادة تشغيل التحليل التلقائي للمحتوى.</p>
                 )}
             </div>
 
-            {/* منطقة عرض الخطاب */}
+            {/* Document Body */}
             {isEditing ? (
                 <div className="space-y-4 animate-in fade-in duration-300">
                     <RichTextEditor value={editedBody} onChange={setEditedBody} ringColor={theme.ring} minHeight="min-h-[500px]" />
                     <div className="flex justify-end gap-3 p-4 bg-slate-900/50 rounded-2xl border border-white/5">
                         <button onClick={() => setIsEditing(false)} className="px-6 py-2 text-sm font-bold text-slate-500 hover:text-slate-300 transition-colors">إلغاء</button>
-                        <button onClick={handleSave} className="px-10 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold shadow-xl shadow-indigo-500/10">حفظ التغييرات</button>
+                        <button onClick={handleSave} className="px-10 py-2.5 bg-indigo-600 text-white rounded-xl text-sm font-bold">حفظ التغييرات</button>
                     </div>
                 </div>
             ) : (
                 <div className="bg-white rounded-3xl shadow-2xl overflow-hidden min-h-[700px] border border-slate-200 relative">
                     <div className="absolute top-6 left-6 no-print">
-                         <span className="text-[10px] bg-slate-100 text-slate-400 font-black px-3 py-1 rounded-full border border-slate-200">الوثيقة الرسمية الرقمية</span>
+                         <span className="text-[10px] bg-slate-100 text-slate-400 font-black px-3 py-1 rounded-full border border-slate-200">الوثيقة الرقمية المعتمدة</span>
                     </div>
                     <div className="p-12 md:p-20">
                         <div className="prose max-w-none prose-slate font-bold text-slate-900 text-lg leading-[2] text-justify" dangerouslySetInnerHTML={{ __html: sanitizeHTML(letter.body) }} />
@@ -154,7 +157,7 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
             )}
           </div>
 
-          {/* لوحة البيانات الجانبية */}
+          {/* Sidebar: Metadata & Smart Replies */}
           <div className="space-y-6 no-print">
             <div className="glass-card p-6 space-y-6 border-white/5 bg-slate-900/40">
                 <h3 className="text-[11px] font-black text-slate-500 uppercase tracking-widest border-b border-white/5 pb-3">بطاقة بيانات المستند</h3>
@@ -169,7 +172,7 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
                             </div>
                             <div className="h-px bg-white/5 w-1/2"></div>
                             <div>
-                                <span className="text-[9px] text-emerald-400 font-black uppercase block">الموجه إليه:</span>
+                                <span className="text-[9px] text-emerald-400 font-black uppercase block">المستلم:</span>
                                 <p className="text-[13px] font-bold text-white">{letter.to}</p>
                             </div>
                         </div>
@@ -195,7 +198,7 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
                             </div>
                             {letter.externalRefNumber && (
                                 <div className="flex justify-between items-center bg-black/20 p-3 rounded-xl border border-white/5">
-                                    <span className="text-[10px] text-slate-400 font-bold">صادر خارجي:</span>
+                                    <span className="text-[10px] text-slate-400 font-bold">رقم الصادر الخارجي:</span>
                                     <span className="text-[12px] font-mono text-slate-200 font-bold">{letter.externalRefNumber}</span>
                                 </div>
                             )}
@@ -208,7 +211,7 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
                 </div>
             </div>
 
-            {/* مسارات الرد الذكي الفعالة */}
+            {/* Smart Reply Paths */}
             {letter.correspondenceType === CorrespondenceType.INBOUND && (
                 <div className="glass-card p-6 space-y-4 bg-indigo-950/20 border-indigo-500/20 rounded-[2rem] shadow-2xl">
                     <div className="flex items-center gap-3">
@@ -217,7 +220,7 @@ export default function LetterDetails({ letter }: { letter: Letter }) {
                     </div>
                     {loadingReplies ? (
                         <div className="space-y-3">
-                            {[1,2,3].map(i => <div key={i} className="h-14 bg-white/5 rounded-2xl animate-pulse"></div>)}
+                            {[1,2,3].map(i => <div key={i} className="h-16 bg-white/5 rounded-2xl animate-pulse"></div>)}
                         </div>
                     ) : smartReplies.length > 0 ? (
                         <div className="flex flex-col gap-3">
