@@ -7,9 +7,6 @@ import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, Sm
  */
 const getAI = () => {
     const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-        console.error("Critical Error: process.env.API_KEY is missing in client context.");
-    }
     return new GoogleGenAI({ apiKey: apiKey || "" });
 };
 
@@ -17,7 +14,6 @@ const ARABIC_STRICT_CONNECTED_SCRIPT = `
 قاعدة لغوية قطعية (Arabic Text Connectivity):
 يجب أن تكون جميع المخرجات باللغة العربية بكلمات متصلة وحروف طبيعية تماماً.
 يُمنع منعاً باتاً تقطيع الحروف (مثل: اكتب "المعاملة" وليس "ا ل م ع ا م ل ة").
-استخدم لغة إدارية رصينة ومترابطة.
 `;
 
 export async function extractDetailsFromLetterImage(
@@ -31,17 +27,13 @@ export async function extractDetailsFromLetterImage(
   existingLetters: { id: string, subject: string, internalRefNumber?: string, externalRefNumber?: string, date: string }[]
 ): Promise<ExtractedLetterDetails> {
   
-  // تقليل السياق لأحدث 10 معاملات فقط لضمان بقاء حجم الطلب ضمن الحدود المسموحة لـ Cloudflare Functions
-  const lettersContext = existingLetters.slice(0, 10).map(l => 
+  // تقليل السياق لأحدث 8 معاملات فقط لضمان بقاء الطلب ضمن حدود Cloudflare Payload (1MB-5MB)
+  const lettersContext = existingLetters.slice(0, 8).map(l => 
     `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
   ).join('\n');
 
   try {
-      // استخلاص بيانات Base64 الخام
-      const sanitizedBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
-
-      // استدعاء وظيفة Cloudflare (Backend Proxy)
-      // نستخدم المسار النسبي /api/ocr الذي تم إنشاؤه في المجلد functions
+      // إرسال البيانات إلى الـ Cloudflare Function الخاصة بنا
       const response = await fetch('/api/ocr', {
           method: 'POST',
           headers: { 
@@ -49,7 +41,7 @@ export async function extractDetailsFromLetterImage(
               'Accept': 'application/json'
           },
           body: JSON.stringify({
-              base64Image: sanitizedBase64,
+              base64Image: base64Image.includes(',') ? base64Image.split(',')[1] : base64Image,
               mimeType,
               lettersContext
           })
@@ -57,16 +49,15 @@ export async function extractDetailsFromLetterImage(
 
       if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.error || "فشل الاتصال بالخادم السحابي (Cloudflare Function).");
+          throw new Error(errorData.error || "فشل تحليل الوثيقة في السحابة.");
       }
 
       const result = await response.json();
       return result as ExtractedLetterDetails;
       
   } catch (error: any) {
-      console.error("OCR Proxy Fetch Error:", error);
-      // إرجاع رسالة خطأ واضحة للمستخدم بناءً على تحليل المشكلة
-      throw new Error(error.message || "حدث خطأ أثناء معالجة الصورة. تأكد من إعدادات Cloudflare وصحة مفتاح الـ API.");
+      console.error("OCR Proxy Error:", error);
+      throw new Error(error.message || "تأكد من وضوح الملف وصحة مفتاح الوصول في إعدادات Cloudflare.");
   }
 }
 
