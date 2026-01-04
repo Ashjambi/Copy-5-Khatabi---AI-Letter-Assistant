@@ -1,9 +1,10 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone } from "../types";
+import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone, LetterVariations } from "../types";
 
 const getAI = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// @FIX: Added missing extractDetailsFromLetterImage logic to match usage in components
 export async function extractDetailsFromLetterImage(
   base64Image: string,
   mimeType: string,
@@ -67,6 +68,64 @@ export async function extractDetailsFromLetterImage(
   return JSON.parse(response.text || "{}") as ExtractedLetterDetails;
 }
 
+// @FIX: Added missing generateLetterVariations export for LetterGenerator component
+export async function generateLetterVariations(params: {
+    isReply: boolean,
+    originalContent?: string,
+    objective: string,
+    sender: string,
+    receiver: string,
+    subject: string,
+    principles: string
+}): Promise<{ variations: LetterVariations, analysis: { strategic_feedback: string[] } }> {
+    const ai = getAI();
+    const { isReply, originalContent, objective, sender, receiver, subject, principles } = params;
+
+    const systemInstruction = `أنت خبير صياغة إداري عربي. الكلمات العربية متصلة دائماً.
+    المطلوب: توليد 3 نسخ (محايدة، حازمة، دبلوماسية) بتنسيق HTML.
+    الأسلوب المفضل: ${principles}`;
+
+    const prompt = isReply 
+        ? `رد على: ${originalContent}. الهدف: ${objective}. من: ${sender} إلى: ${receiver}. الموضوع: ${subject}`
+        : `خطاب جديد: ${subject}. المحتوى المطلوب: ${objective}. من: ${sender} إلى: ${receiver}`;
+
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+            systemInstruction,
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    analysis: {
+                        type: Type.OBJECT,
+                        properties: {
+                            strategic_feedback: {
+                                type: Type.ARRAY,
+                                items: { type: Type.STRING }
+                            }
+                        },
+                        required: ["strategic_feedback"]
+                    },
+                    variations: {
+                        type: Type.OBJECT,
+                        properties: {
+                            neutral: { type: Type.STRING },
+                            strict: { type: Type.STRING },
+                            diplomatic: { type: Type.STRING }
+                        },
+                        required: ["neutral", "strict", "diplomatic"]
+                    }
+                },
+                required: ["analysis", "variations"]
+            }
+        }
+    });
+
+    return JSON.parse(response.text || "{}");
+}
+
 export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]> {
     const ai = getAI();
     const content = letter.summary || letter.body.replace(/<[^>]*>?/gm, ' ');
@@ -95,6 +154,28 @@ export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]
     });
     
     return JSON.parse(response.text || "[]") as SmartReply[];
+}
+
+// @FIX: Added missing analyzeLetterBrief export for LetterDetails component
+export async function analyzeLetterBrief(letter: Letter): Promise<{ summary: string, keyPoints: string[] }> {
+    const ai = getAI();
+    const content = letter.body.replace(/<[^>]*>?/gm, ' ');
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `حلل الخطاب واستخرج ملخصاً ونقاط العمل بكلمات متصلة:\n\nالموضوع: ${letter.subject}\nالمحتوى: ${content}`,
+        config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+                type: Type.OBJECT,
+                properties: {
+                    summary: { type: Type.STRING },
+                    keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } }
+                },
+                required: ["summary", "keyPoints"]
+            }
+        }
+    });
+    return JSON.parse(response.text || "{}");
 }
 
 export async function enhanceLetter(text: string): Promise<EnhancementSuggestion[]> {
@@ -164,4 +245,20 @@ export async function searchLettersSmartly(query: string, letters: Letter[]): Pr
         config: { responseMimeType: "application/json" }
     });
     return JSON.parse(response.text || "[]");
+}
+
+// @FIX: Added missing refineLetterWithChat export for LetterGenerator component
+export async function refineLetterWithChat(currentBody: string, userInstruction: string, context: string): Promise<string> {
+    const ai = getAI();
+    const prompt = `الخطاب الحالي: ${currentBody}\nالسياق: ${context}\nتعليمات المستخدم: ${userInstruction}\nالمطلوب: تعديل النص وإرجاعه بتنسيق HTML وبكلمات عربية متصلة تماماً.`;
+    
+    const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+        config: {
+            systemInstruction: "أنت خبير صياغة إداري. قم بتعديل الخطاب الموفر بناء على تعليمات المستخدم.",
+        }
+    });
+    
+    return response.text || currentBody;
 }
