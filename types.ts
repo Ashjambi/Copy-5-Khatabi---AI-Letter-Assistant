@@ -87,10 +87,10 @@ export interface StrategicPath {
 }
 
 export interface StrategicAnalysis {
-    sender_vibe: string;
-    power_dynamic: 'superior' | 'equal' | 'subordinate';
-    critical_points: string[];
-    suggested_strategies: StrategicPath[];
+    sender_intent: string;
+    power_balance: string;
+    risks: string[];
+    paths: StrategicPath[];
 }
 
 export interface User {
