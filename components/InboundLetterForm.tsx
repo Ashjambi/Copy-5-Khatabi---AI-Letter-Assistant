@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo } from 'react';
 import { toast } from 'react-hot-toast';
 import { Letter, Attachment, CompanySettings, PriorityLevel, ConfidentialityLevel, LetterType, InboundLetterFormState, CorrespondenceType } from '../types';
@@ -38,6 +37,7 @@ const TextAreaField = ({ label, value, onChange, placeholder, rows, ringColor, d
     </div>
 );
 
+// @FIX: Added required property to SelectField component and its props definition to fix the type assignment error on line 276
 const SelectField = <T extends string>({ label, value, onChange, options, ringColor, disabled=false, required=false }: {label: string, value: T, onChange: (e: React.ChangeEvent<HTMLSelectElement>) => void, options: object | string[], ringColor: string, disabled?: boolean, required?: boolean}) => (
     <div>
       <label className="block text-sm font-bold text-slate-300 mb-1">{label}</label>
@@ -110,7 +110,7 @@ export default function InboundLetterForm(): React.ReactNode {
         const dataUrl = await fileToDataURL(file);
         base64Data = dataUrl.split(",")[1];
 
-        // معالجة ملفات TIFF بشكل خاص
+        // معالجة ملفات TIFF
         if (file.name.toLowerCase().endsWith('.tif') || file.name.toLowerCase().endsWith('.tiff')) {
             const arrayBuffer = await file.arrayBuffer();
             const tiff = new Tiff({ buffer: arrayBuffer });
@@ -165,7 +165,7 @@ export default function InboundLetterForm(): React.ReactNode {
         toast.success("تم استخلاص البيانات بنجاح!", { id: scanToast });
     } catch(error: any) {
         console.error("Scan Error:", error);
-        toast.error(`حدث خطأ أثناء معالجة الوثيقة: ${error.message || 'خطأ تقني'}`, { id: scanToast });
+        toast.error(`خطأ: ${error.message || 'فشل المسح الذكي'}`, { id: scanToast });
     } finally {
         setIsScanning(false);
         if (e.target) e.target.value = '';
@@ -185,7 +185,7 @@ export default function InboundLetterForm(): React.ReactNode {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!subject.trim() || !from.trim() || !to.trim() || attachments.length === 0) {
-        toast.error('الرجاء تعبئة الحقول الإلزامية وإرفاق ملف واحد على الأقل.');
+        toast.error('الرجاء تعبئة الحقول وإرفاق ملف واحد.');
         return;
     }
 
@@ -298,7 +298,7 @@ export default function InboundLetterForm(): React.ReactNode {
                     ))}
                 </div>
                 <label className="cursor-pointer bg-indigo-600/10 border-2 border-dashed border-indigo-500/30 hover:border-indigo-500/60 p-6 rounded-xl block text-center transition-all group">
-                    <span className="text-sm font-bold text-indigo-400 group-hover:text-indigo-300">انقر أو اسحب لإضافة مرفقات جديدة</span>
+                    <span className="text-sm font-bold text-indigo-400 group-hover:text-indigo-300">انقر لإضافة مرفقات</span>
                     <input type="file" multiple onChange={handleFileChange} className="hidden" />
                 </label>
             </div>

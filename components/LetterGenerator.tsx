@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../App';
 import { Letter, LetterType, Tone, PriorityLevel, ConfidentialityLevel, GeneratorState, LetterVariations, SmartReply } from '../types';
-import { refineLetterWithChat, generateSmartReplies, generateLetterVariations } from '../services/geminiService';
+import { generateSmartReplies, generateLetterVariations, refineLetterWithChat } from '../services/geminiService';
 import { toast } from 'react-hot-toast';
 import { getThemeClasses, sanitizeHTML } from './utils';
 import RichTextEditor from './RichTextEditor';
@@ -75,7 +75,8 @@ export default function LetterGenerator() {
             setGeneratedContent(result);
             setStep(1);
         } catch (e) {
-            toast.error("فشلت الصياغة الذكية. يرجى المحاولة لاحقاً.");
+            console.error(e);
+            toast.error("فشلت الصياغة الذكية. يرجى التأكد من إعدادات الـ API في كلاود فلار.");
         } finally {
             setIsLoading(false);
         }

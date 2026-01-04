@@ -1,9 +1,9 @@
-
 import { GoogleGenAI, Type } from "@google/genai";
 import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, Tone, SmartSearchResult, LetterVariations } from "../types";
 
 /**
  * استخلاص البيانات من وثائق PDF أو الصور (OCR الذكي)
+ * يستخدم gemini-3-flash-preview لدعمه القوي للوثائق العربية
  */
 export async function extractDetailsFromLetterImage(
   base64Data: string,
@@ -19,59 +19,62 @@ export async function extractDetailsFromLetterImage(
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
   
   const lettersContext = existingLetters.map(l => 
-    `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
+    `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", ExtRef: "${l.externalRefNumber || ''}", Subject: "${l.subject}"`
   ).join('\n');
 
   const systemInstruction = `أنت خبير أرشفة إداري متخصص في الوثائق العربية الرسمية.
   
-  **قواعد لغوية صارمة (Arabic Integrity):**
-  1. يجب أن تكون الكلمات العربية في المخرجات متصلة تماماً (مثلاً: "خطاب" وليس "خ ط ا ب").
+  **قواعد لغوية قطعية (Arabic Text Integrity):**
+  1. يجب أن تكون الكلمات العربية في المخرجات متصلة تماماً وطبيعية (مثال: "الموضوع" وليس "ا ل م و ض و ع").
   2. لا تضع مسافات بين حروف الكلمة الواحدة أبداً.
-  3. استخرج البيانات بدقة من المستند (PDF أو صورة).
+  3. استخرج البيانات بدقة من المستند المرفق (PDF أو صورة).
 
-  **السياق المرجعي:**
+  **المطلوب JSON يحتوي على:**
+  - subject: موضوع الخطاب
+  - from: الجهة المرسلة
+  - to: الجهة الموجه إليها
+  - date: التاريخ بصيغة YYYY-MM-DD
+  - externalRefNumber: رقم القيد الخارجي
+  - summary: ملخص تنفيذي قصير
+  - referenceId: إذا وجد تطابق مع أحد المعرفات التالية:
   ${lettersContext}`;
 
-  try {
-    const response = await ai.models.generateContent({
-      model: "gemini-3-flash-preview",
-      contents: {
-        parts: [
-          { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
-          { text: "حلل الوثيقة المرفقة واستخرج البيانات المطلوبة بصيغة JSON. تأكد من سلامة واتصال الكلمات العربية." }
-        ]
-      },
-      config: {
-        systemInstruction,
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            subject: { type: Type.STRING },
-            from: { type: Type.STRING },
-            to: { type: Type.STRING },
-            date: { type: Type.STRING },
-            externalRefNumber: { type: Type.STRING },
-            summary: { type: Type.STRING },
-            category: { type: Type.STRING },
-            priority: { type: Type.STRING },
-            confidentiality: { type: Type.STRING },
-            referenceId: { type: Type.STRING }
-          },
-          required: ["subject", "from", "to"]
-        }
+  const response = await ai.models.generateContent({
+    model: "gemini-3-flash-preview",
+    contents: {
+      parts: [
+        { inlineData: { mimeType: mimeType || "application/pdf", data: base64Data } },
+        { text: "حلل الوثيقة المرفقة واستخرج البيانات المطلوبة بصيغة JSON. تأكد من سلامة واتصال الكلمات العربية." }
+      ]
+    },
+    config: {
+      systemInstruction,
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          subject: { type: Type.STRING },
+          from: { type: Type.STRING },
+          to: { type: Type.STRING },
+          date: { type: Type.STRING },
+          externalRefNumber: { type: Type.STRING },
+          summary: { type: Type.STRING },
+          category: { type: Type.STRING },
+          priority: { type: Type.STRING },
+          confidentiality: { type: Type.STRING },
+          referenceId: { type: Type.STRING }
+        },
+        required: ["subject", "from", "to"]
       }
-    });
+    }
+  });
 
-    return JSON.parse(response.text || "{}") as ExtractedLetterDetails;
-  } catch (e: any) {
-    console.error("AI OCR Error:", e);
-    throw new Error(e.message || "فشل في تحليل الوثيقة ذكياً.");
-  }
+  return JSON.parse(response.text || "{}") as ExtractedLetterDetails;
 }
 
 /**
  * توليد 3 تنويعات للخطاب بناءً على الهدف والأسلوب
+ * يستخدم gemini-3-pro-preview للمهام النصية المعقدة
  */
 export async function generateLetterVariations(params: {
     isReply: boolean,
@@ -85,16 +88,23 @@ export async function generateLetterVariations(params: {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const { isReply, originalContent, objective, sender, receiver, subject, principles } = params;
 
-    const systemInstruction = `أنت خبير صياغة إداري. الكلمات العربية متصلة دائماً.
-    المطلوب: توليد 3 نسخ (محايدة، حازمة، دبلوماسية) بصيغة HTML.
-    الأسلوب المفضل: ${principles}`;
+    const systemInstruction = `أنت خبير صياغة إداري عربي. الكلمات العربية متصلة دائماً.
+    المطلوب: توليد 3 نسخ (محايدة، حازمة، دبلوماسية) بتنسيق HTML نظيف.
+    الأسلوب المكتسب: ${principles}`;
 
     const prompt = isReply 
-        ? `رد على: ${originalContent}. الهدف: ${objective}. من: ${sender} إلى: ${receiver}. الموضوع: ${subject}`
-        : `خطاب جديد: ${subject}. المحتوى: ${objective}. من: ${sender} إلى: ${receiver}`;
+        ? `رد استراتيجي على خطاب سابق.
+           سياق المرجع: ${originalContent}
+           الهدف الحالي: ${objective}
+           من: ${sender} إلى: ${receiver}
+           الموضوع: ${subject}`
+        : `إنشاء خطاب جديد باحترافية.
+           الموضوع: ${subject}
+           المحتوى المطلوب: ${objective}
+           من: ${sender} إلى: ${receiver}`;
 
     const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3-pro-preview",
         contents: prompt,
         config: {
             systemInstruction,
@@ -133,9 +143,7 @@ export async function analyzeLetterBrief(letter: Letter): Promise<{ summary: str
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: `حلل الخطاب التالي واستخرج ملخصاً تنفيذياً ونقاط العمل بكلمات عربية متصلة:
-            الموضوع: ${letter.subject}
-            المحتوى: ${content}`,
+            contents: `حلل الخطاب واستخرج ملخصاً تنفيذياً ونقاط العمل بكلمات عربية متصلة:\n\nالموضوع: ${letter.subject}\nالمحتوى: ${content}`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -154,6 +162,9 @@ export async function analyzeLetterBrief(letter: Letter): Promise<{ summary: str
     }
 }
 
+/**
+ * توليد مسارات رد ذكية
+ */
 export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const content = letter.summary || letter.body.replace(/<[^>]*>?/gm, ' ');
@@ -179,12 +190,45 @@ export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]
                 }
             }
         });
-        return JSON.parse(response.text || "[]") as SmartReply[];
+        return JSON.parse(response.text || "[]");
     } catch (e) {
         return [];
     }
 }
 
+/**
+ * تحسين الصياغة اللغوية والإدارية
+ */
+export async function enhanceLetter(text: string): Promise<EnhancementSuggestion[]> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+        const response = await ai.models.generateContent({
+            model: "gemini-3-flash-preview",
+            contents: `راجع النص وقدم اقتراحات لتحسين صياغته الإدارية بكلمات متصلة:\n\n${text}`,
+            config: {
+                responseMimeType: "application/json",
+                responseSchema: {
+                    type: Type.ARRAY,
+                    items: {
+                        type: Type.OBJECT,
+                        properties: {
+                            original_part: { type: Type.STRING },
+                            suggested_improvement: { type: Type.STRING },
+                            reason: { type: Type.STRING }
+                        }
+                    }
+                }
+            }
+        });
+        return JSON.parse(response.text || "[]");
+    } catch (e) {
+        return [];
+    }
+}
+
+/**
+ * البحث الذكي سياقياً
+ */
 export async function searchLettersSmartly(query: string, letters: Letter[]): Promise<SmartSearchResult[]> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const list = letters.map(l => ({ id: l.id, subject: l.subject }));
@@ -215,13 +259,30 @@ export async function searchLettersSmartly(query: string, letters: Letter[]): Pr
     }
 }
 
+/**
+ * تلخيص سلسلة مراسلات
+ */
+export async function summarizeCorrespondenceThread(thread: Letter[]): Promise<string> {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const threadText = thread.map(l => `${l.from} -> ${l.to}: ${l.subject}\n${l.body.replace(/<[^>]*>?/gm, ' ')}`).join('\n---\n');
+    const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `لخص هذه السلسلة في فقرة واحدة بكلمات عربية متصلة:\n\n${threadText}`,
+        config: { temperature: 0.2 }
+    });
+    return response.text || "";
+}
+
+/**
+ * ملخص المتابعة
+ */
 export async function getFollowUpSummary(letters: Letter[]): Promise<FollowUpItem[]> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const summaries = letters.map(l => ({ id: l.id, subject: l.subject }));
     try {
         const response = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: `حدد المعاملات التي تحتاج متابعة عاجلة من القائمة:\n\n${JSON.stringify(summaries)}`,
+            contents: `حدد المعاملات التي تحتاج متابعة عاجلة من القائمة بصيغة JSON بكلمات متصلة:\n\n${JSON.stringify(summaries)}`,
             config: {
                 responseMimeType: "application/json",
                 responseSchema: {
@@ -231,8 +292,7 @@ export async function getFollowUpSummary(letters: Letter[]): Promise<FollowUpIte
                         properties: {
                             letterId: { type: Type.STRING },
                             summary: { type: Type.STRING }
-                        },
-                        required: ["letterId", "summary"]
+                        }
                     }
                 }
             }
@@ -243,45 +303,9 @@ export async function getFollowUpSummary(letters: Letter[]): Promise<FollowUpIte
     }
 }
 
-export async function enhanceLetter(text: string): Promise<EnhancementSuggestion[]> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    try {
-        const response = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `راجع النص وقدم اقتراحات لتحسين صياغته الإدارية بكلمات متصلة:\n\n${text}`,
-            config: {
-                responseMimeType: "application/json",
-                responseSchema: {
-                    type: Type.ARRAY,
-                    items: {
-                        type: Type.OBJECT,
-                        properties: {
-                            original_part: { type: Type.STRING },
-                            suggested_improvement: { type: Type.STRING },
-                            reason: { type: Type.STRING }
-                        },
-                        required: ["original_part", "suggested_improvement", "reason"]
-                    }
-                }
-            }
-        });
-        return JSON.parse(response.text || "[]");
-    } catch (e) {
-        return [];
-    }
-}
-
-export async function summarizeCorrespondenceThread(thread: Letter[]): Promise<string> {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const threadText = thread.map(l => `${l.from} -> ${l.to}: ${l.subject}`).join('\n');
-    const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `لخص سلسلة المراسلات هذه في فقرة واحدة بكلمات متصلة:\n\n${threadText}`,
-        config: { temperature: 0.2 }
-    });
-    return response.text || "";
-}
-
+/**
+ * تنقيح نص الخطاب عبر الدردشة
+ */
 export async function refineLetterWithChat(currentBody: string, userInstruction: string, context: string): Promise<string> {
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const prompt = `الخطاب الحالي: ${currentBody}\nالسياق: ${context}\nتعليمات المستخدم: ${userInstruction}\nالمطلوب: تعديل النص وإرجاعه بتنسيق HTML وبكلمات عربية متصلة تماماً.`;

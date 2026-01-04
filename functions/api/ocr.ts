@@ -9,13 +9,16 @@ export async function onRequestPost(context: any) {
     const { base64Data, mimeType, lettersContext } = body;
 
     if (!base64Data) {
-      return new Response("Missing image data", { status: 400 });
+      return new Response(JSON.stringify({ error: "Missing image data" }), { status: 400 });
     }
 
     const apiKey = env.API_KEY || env.GEMINI_API_KEY;
+    if (!apiKey) {
+      return new Response(JSON.stringify({ error: "API_KEY NOT FOUND IN BACKEND" }), { status: 500 });
+    }
+
     const ai = new GoogleGenAI({ apiKey });
     
-    // استخدام inlineData مباشرة بدلاً من File API لتسريع العملية
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: [
@@ -30,7 +33,7 @@ export async function onRequestPost(context: any) {
               - from: المرسل
               - to: المستلم المقترح
               - date: التاريخ (YYYY-MM-DD)
-              - externalRefNumber: رقم الصادر
+              - externalRefNumber: رقم الصادر الخارجي
               - summary: ملخص تنفيذي (سطر واحد)
               - category: تصنيف (مثال: مالي، قانوني، إداري)
               - referenceId: تطابق مع أحد المعرفات التالية إن وجد صلة: ${lettersContext}` 
@@ -62,6 +65,7 @@ export async function onRequestPost(context: any) {
     });
 
   } catch (e: any) {
+    console.error("OCR API Error:", e);
     return new Response(JSON.stringify({ error: e.message }), { 
       status: 500,
       headers: { "Content-Type": "application/json" }
