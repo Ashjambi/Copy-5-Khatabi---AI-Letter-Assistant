@@ -41,7 +41,10 @@ export default function LetterGenerator() {
                     setStrategicAnalysis(data);
                     toast.success("تم الانتهاء من فك شفرة الخطاب الوارد.");
                 })
-                .catch(() => toast.error("تعذر إجراء التحليل الاستراتيجي حالياً."))
+                .catch((e) => {
+                    console.error(e);
+                    toast.error("فشل التحليل الاستراتيجي. تأكد من إعداد المفتاح بشكل صحيح.");
+                })
                 .finally(() => setIsLoading(false));
         }
     }, [isReplyMode, parentLetter]);
@@ -63,7 +66,7 @@ export default function LetterGenerator() {
             setGeneratedContent(result);
             setStep(1);
         } catch (e: any) { 
-            toast.error(e.message || "فشلت عملية الصياغة.");
+            toast.error(e.message || "فشلت عملية الصياغة. يرجى المحاولة لاحقاً.");
         } finally { setIsLoading(false); }
     };
 
@@ -74,7 +77,7 @@ export default function LetterGenerator() {
         setChatMessages(prev => [...prev, {role: 'user', text: instruction}]);
         setIsLoading(true);
         try {
-            const context = `الموضوع: ${subject} | الهدف: ${objectiveText}`;
+            const context = `الموضوع: ${subject} | المرجع: ${originalLetterContent}`;
             const newBody = await refineLetterWithChat(finalBody, instruction, context);
             setFinalBody(newBody);
             setChatMessages(prev => [...prev, {role: 'ai', text: 'تم تحديث النص بنجاح.'}]);
@@ -209,7 +212,7 @@ export default function LetterGenerator() {
                                         className={`px-20 py-5 rounded-2xl font-black text-lg flex items-center gap-4 transition-all shadow-2xl active:scale-95 ${isLoading ? 'bg-slate-700 opacity-50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white'}`}
                                     >
                                         {isLoading ? <div className="animate-spin h-5 w-5 border-2 border-white/20 border-b-white rounded-full"></div> : <SparklesIcon className="w-6 h-6" />}
-                                        <span>{isLoading ? 'جاري الصياغة...' : 'توليد المسودات الذكية'}</span>
+                                        <span>{isLoading ? 'جاري التحليل والصياغة...' : 'توليد المسودات الذكية'}</span>
                                     </button>
                                 </div>
                             </div>
