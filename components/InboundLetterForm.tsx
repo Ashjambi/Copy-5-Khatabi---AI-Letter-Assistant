@@ -73,9 +73,6 @@ export default function InboundLetterForm(): React.ReactNode {
   } = inboundLetterFormState;
 
   const [isScanning, setIsScanning] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-
   const theme = getThemeClasses(settings.primaryColor);
   const aiScanInputRef = useRef<HTMLInputElement>(null);
   const allRecipients = [...settings.departments, ...(settings.externalEntities || [])];
@@ -83,19 +80,6 @@ export default function InboundLetterForm(): React.ReactNode {
   const updateState = (payload: Partial<InboundLetterFormState>) => {
       dispatch({ type: 'UPDATE_INBOUND_FORM_STATE', payload });
   };
-
-  const filteredLetters = useMemo(() => {
-      if (!searchTerm) return [];
-      const lower = searchTerm.toLowerCase();
-      return letters.filter(l => 
-          l.subject.toLowerCase().includes(lower) || 
-          (l.internalRefNumber || '').toLowerCase().includes(lower) ||
-          (l.externalRefNumber || '').toLowerCase().includes(lower)
-      ).slice(0, 5);
-  }, [searchTerm, letters]);
-
-  const selectedParentLetter = useMemo(() => letters.find(l => l.id === referenceId), [letters, referenceId]);
-
 
   const handleAiScan = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -106,11 +90,12 @@ export default function InboundLetterForm(): React.ReactNode {
                         file.name.toLowerCase().endsWith('.tiff');
 
     if (!isSupported) {
-        toast.error("يرجى اختيار ملف صورة مدعوم أو ملف PDF للتحليل.");
+        toast.error("الملف غير مدعوم. يرجى اختيار صورة أو PDF.");
         return;
     }
 
     setIsScanning(true);
+    const toastId = toast.loading("جاري قراءة وتحليل الوثيقة...");
     
     try {
         let base64Data: string;
@@ -122,23 +107,21 @@ export default function InboundLetterForm(): React.ReactNode {
             const canvas = tiff.toCanvas();
             if (!canvas) throw new Error("Could not convert TIFF file.");
             const dataUrl = canvas.toDataURL('image/png');
-            [, base64Data] = dataUrl.split(',');
+            base64Data = dataUrl.split(',')[1];
             mimeType = 'image/png';
         } else {
             const dataUrl = await fileToDataURL(file);
-            const [header, data] = dataUrl.split(',');
-            if (!data) throw new Error("Invalid file content.");
-            base64Data = data;
+            const splitData = dataUrl.split(',');
+            base64Data = splitData[1];
             if (!mimeType) {
-                const matchedMime = header.match(/:(.*?);/)?.[1];
-                mimeType = matchedMime || 'image/jpeg';
+                const header = splitData[0];
+                mimeType = header.match(/:(.*?);/)?.[1] || 'image/jpeg';
             }
         }
 
         const letterTypes = Object.values(LetterType) as string[];
         const priorityLevels = Object.values(PriorityLevel) as string[];
         const confidentialityLevels = Object.values(ConfidentialityLevel) as string[];
-        // @FIX: Explicitly cast to string[] to fix "unknown[] is not assignable to string[]" error
         const allCategories = [...new Set(letters.map(l => l.category).filter((c): c is string => !!c))] as string[];
         
         const existingLettersForScan = letters.map(l => ({
@@ -168,37 +151,34 @@ export default function InboundLetterForm(): React.ReactNode {
         if (extractedData.summary) updates.summary = extractedData.summary;
         if (extractedData.category) updates.category = extractedData.category;
         if (extractedData.referenceId) updates.referenceId = extractedData.referenceId;
-        
-        if (extractedData.date) {
-            updates.dateReceived = extractedData.date;
-        }
+        if (extractedData.date) updates.dateReceived = extractedData.date;
         
         updateState(updates);
         
-        // إرفاق الملف تلقائياً بعد المسح الناجح
+        // إرفاق الملف تلقائياً
         if (!attachments.some(f => f.name === file.name)) {
             updateState({ attachments: [file, ...attachments] });
         }
 
-        toast.success("تم استخلاص البيانات بنجاح!");
+        toast.success("تم استخلاص البيانات بنجاح!", { id: toastId });
 
     } catch(error: any) {
-        console.error("Detailed OCR Failure:", error);
-        toast.error(error.message || "حدث خطأ أثناء معالجة الوثيقة.");
+        console.error("OCR Final Catch:", error);
+        toast.error(error.message || "حدث خطأ أثناء معالجة الوثيقة.", { id: toastId });
     } finally {
         setIsScanning(false);
         if (e.target) e.target.value = '';
     }
   };
 
-  const removeAttachment = (index: number) => {
-    updateState({ attachments: attachments.filter((_, i) => i !== index) });
-  };
-  
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
         updateState({ attachments: [...attachments, ...Array.from(e.target.files)] });
     }
+  };
+
+  const removeAttachment = (index: number) => {
+    updateState({ attachments: attachments.filter((_, i) => i !== index) });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -222,18 +202,19 @@ export default function InboundLetterForm(): React.ReactNode {
 
     const newAttachments: Attachment[] = await Promise.all(attachmentPromises);
 
-    const newLetterData = {
-      subject, from, to, type: letterType, cc,
-      date: dateReceived, attachments: newAttachments, externalRefNumber, priority, confidentiality,
-      completionDays: completionDays ? Number(completionDays) : undefined,
-      notes, category, summary, referenceId,
-    };
+    dispatch({ 
+        type: 'REGISTER_INBOUND', 
+        payload: {
+            subject, from, to, type: letterType, cc,
+            date: dateReceived, attachments: newAttachments, externalRefNumber, priority, confidentiality,
+            completionDays: completionDays ? Number(completionDays) : undefined,
+            notes, category, summary, referenceId,
+        }
+    });
     
-    dispatch({ type: 'REGISTER_INBOUND', payload: newLetterData });
     toast.success("تم تسجيل الوارد بنجاح.");
     dispatch({ type: 'RESET_INBOUND_FORM_STATE' });
   };
-  
 
   return (
     <div className="max-w-4xl mx-auto pb-12">
