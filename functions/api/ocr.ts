@@ -3,34 +3,38 @@ import { GoogleGenAI, Type } from "@google/genai";
 
 /**
  * Cloudflare Pages Function: /api/ocr
- * تستخدم onRequestPost لاستقبال البيانات الضخمة (Base64) عبر طلب POST.
+ * معالجة متقدمة للمستندات (PDF/Images) عبر Gemini 3
  */
 export async function onRequestPost(context: any) {
   const { request } = context;
 
   try {
-    // 1. قراءة البيانات من جسم الطلب (JSON)
+    // 1. استلام البيانات بصيغة JSON
     const body = await request.json();
     const { base64Image, mimeType, lettersContext } = body;
 
     if (!base64Image || !mimeType) {
-      return new Response(JSON.stringify({ error: "Missing file data" }), { 
+      return new Response(JSON.stringify({ error: "Missing document data" }), { 
         status: 400, 
         headers: { "Content-Type": "application/json" } 
       });
     }
 
-    // 2. تهيئة محرك Gemini (تلتزم باستخدام process.env.API_KEY)
-    // ملاحظة: Cloudflare Pages يحقن المتغيرات في process.env تلقائياً عند ضبطها في Settings
+    // 2. تنظيف الـ Base64 (إزالة الترويسات إن وجدت)
+    const cleanBase64 = base64Image.includes(',') ? base64Image.split(',')[1] : base64Image;
+    const finalData = cleanBase64.replace(/\s/g, "");
+
+    // 3. تهيئة المحرك (الالتزام بـ process.env.API_KEY)
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || "" });
 
-    const systemInstruction = `أنت خبير أرشفة إداري ذكي.
-قاعدة لغوية قطعية: يجب أن تكون جميع المخرجات باللغة العربية بكلمات متصلة وحروف طبيعية تماماً.
-يُمنع منعاً باتاً تقطيع الحروف (مثال: اكتب "المعاملة" وليس "ا ل م ع ا م ل ة").
+    const systemInstruction = `أنت مساعد إداري خبير في أرشفة الوثائق العربية.
+يجب أن تكون جميع المخرجات باللغة العربية بكلمات متصلة وحروف طبيعية تماماً.
+يُمنع تقطيع الحروف (مثال: اكتب "المعاملة" وليس "ا ل م ع ا م ل ة").
 سياق المعاملات السابقة للمطابقة:
 ${lettersContext}`;
 
-    // 3. استدعاء Gemini 3 Flash (الموديل الأسرع والأفضل للمستندات)
+    // 4. استدعاء الموديل باستخدام الهيكلية المعتمدة لـ PDF والصور
+    // نستخدم gemini-3-flash-preview لقدرته الفائقة على معالجة السياق الطويل والمستندات
     const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: {
@@ -38,19 +42,19 @@ ${lettersContext}`;
           { 
             inlineData: { 
               mimeType: mimeType, 
-              data: base64Image.replace(/^data:.*,/, "").replace(/\s/g, "") 
+              data: finalData
             } 
           },
           { 
-            text: `حلل هذه الوثيقة واستخرج البيانات التالية بصيغة JSON:
-            - subject: الموضوع
-            - from: المرسل
-            - to: المستلم
-            - date: التاريخ
-            - externalRefNumber: رقم الصادر الخارجي
-            - summary: ملخص الإجراء
-            - category: التصنيف
-            - referenceId: معرف المعاملة المرتبطة إن وجد` 
+            text: `قم بتحليل هذا المستند واستخرج البيانات التالية بدقة في صيغة JSON:
+            - subject: عنوان أو موضوع الخطاب
+            - from: الجهة المرسلة
+            - to: الجهة الموجه إليها الخطاب
+            - date: تاريخ الخطاب كما ورد فيه
+            - externalRefNumber: رقم القيد أو الصادر الخارجي
+            - summary: ملخص تنفيذي للمحتوى (بحدود 30 كلمة)
+            - category: تصنيف إداري مقترح
+            - referenceId: معرف المعاملة المرتبطة من السياق المقدم إن وجد`
           }
         ]
       },
@@ -74,7 +78,12 @@ ${lettersContext}`;
       }
     });
 
-    // 4. إرجاع النتيجة
+    // 5. التحقق من سلامة الرد
+    if (!response.text) {
+        console.error("Gemini empty response or blocked content.");
+        return new Response(JSON.stringify({ error: "Gemini rejected the content analysis." }), { status: 500 });
+    }
+
     return new Response(response.text, {
       headers: { 
         "Content-Type": "application/json",
@@ -83,16 +92,18 @@ ${lettersContext}`;
     });
 
   } catch (error: any) {
-    console.error("Function OCR Error:", error);
+    console.error("Critical OCR Error:", error);
     
-    // رسالة خطأ ذكية بناءً على تشخيص الحالة
-    let message = "فشل في معالجة المستند سحابياً.";
-    if (error?.message?.includes("API key")) {
-        message = "خطأ في مفتاح الوصول (API_KEY) داخل إعدادات Cloudflare.";
+    // تشخيص الأخطاء الشائعة
+    let userMsg = "حدث خطأ أثناء تحليل المستند سحابياً.";
+    if (error?.message?.includes("413") || error?.message?.includes("large")) {
+        userMsg = "حجم الملف كبير جداً بالنسبة للخادم.";
+    } else if (error?.message?.includes("API key")) {
+        userMsg = "مفتاح الوصول غير صالح أو لم يتم ضبطه في Cloudflare.";
     }
 
     return new Response(JSON.stringify({ 
-      error: message, 
+      error: userMsg, 
       details: error.message 
     }), { 
       status: 500, 

@@ -27,13 +27,13 @@ export async function extractDetailsFromLetterImage(
   existingLetters: { id: string, subject: string, internalRefNumber?: string, externalRefNumber?: string, date: string }[]
 ): Promise<ExtractedLetterDetails> {
   
-  // تقليل السياق لأحدث 8 معاملات فقط لضمان بقاء الطلب ضمن حدود Cloudflare Payload (1MB-5MB)
-  const lettersContext = existingLetters.slice(0, 8).map(l => 
+  // تقليل السياق لأحدث 5 معاملات فقط لتقليل حجم الـ Payload الإجمالي وضمان استقرار الطلب
+  const lettersContext = existingLetters.slice(0, 5).map(l => 
     `- ID: "${l.id}", Ref: "${l.internalRefNumber || ''}", Subject: "${l.subject}"`
   ).join('\n');
 
   try {
-      // إرسال البيانات إلى الـ Cloudflare Function الخاصة بنا
+      // إرسال البيانات إلى الـ Cloudflare Function
       const response = await fetch('/api/ocr', {
           method: 'POST',
           headers: { 
@@ -49,14 +49,14 @@ export async function extractDetailsFromLetterImage(
 
       if (!response.ok) {
           const errorData = await response.json();
-          throw new Error(errorData.error || "فشل تحليل الوثيقة في السحابة.");
+          throw new Error(errorData.error || "فشل تحليل الوثيقة سحابياً.");
       }
 
       const result = await response.json();
       return result as ExtractedLetterDetails;
       
   } catch (error: any) {
-      console.error("OCR Proxy Error:", error);
+      console.error("OCR API Proxy Error:", error);
       throw new Error(error.message || "تأكد من وضوح الملف وصحة مفتاح الوصول في إعدادات Cloudflare.");
   }
 }
