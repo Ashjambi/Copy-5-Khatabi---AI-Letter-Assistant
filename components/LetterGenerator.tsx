@@ -2,8 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../App';
 import { Letter, LetterType, Tone, PriorityLevel, ConfidentialityLevel, GeneratorState, LetterVariations, SmartReply } from '../types';
-import { GoogleGenAI, Type } from "@google/genai";
-import { generateSmartReplies } from '../services/geminiService';
+import { generateSmartReplies, generateLetterVariations } from '../services/geminiService';
 import { toast } from 'react-hot-toast';
 import { getThemeClasses, sanitizeHTML } from './utils';
 import RichTextEditor from './RichTextEditor';
@@ -32,11 +31,9 @@ export default function LetterGenerator() {
     const [objectiveText, setObjectiveText] = useState(objective || '');
     const [isContextCollapsed, setIsContextCollapsed] = useState(false);
 
-    // العثور على الخطاب الأب فوراً عند توفر المرجع
     const parentLetter = useMemo(() => letters.find(l => l.id === referenceId), [letters, referenceId]);
     const isReplyMode = !!referenceId;
 
-    // جلب الردود الذكية فور الدخول في وضع الرد
     useEffect(() => {
         if (isReplyMode && parentLetter) {
             const fetchReplies = async () => {
@@ -45,11 +42,9 @@ export default function LetterGenerator() {
                     const replies = await generateSmartReplies(parentLetter);
                     if (replies && replies.length > 0) {
                         setSmartReplies(replies);
-                    } else {
-                        console.warn("No smart replies returned from API");
                     }
                 } catch (e) {
-                    console.error("Smart replies failed", e);
+                    console.error("Failed to load strategic pathways", e);
                 } finally {
                     setIsLoadingReplies(false);
                 }
@@ -74,38 +69,20 @@ export default function LetterGenerator() {
 
         setIsLoading(true);
         try {
-            const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-            
-            const systemInstruction = `أنت خبير صياغة إدارية. قاعدة لغوية: كلمات متصلة حروفها طبيعية. المهمة: 3 مسودات HTML. التخصيص: ${learnedPrinciples.map(p => p.text).join(' | ')}`;
-
-            const userPrompt = isReplyMode 
-                ? `رد على: ${originalLetterContent}. التوجيه: ${objectiveText}. من ${sender} إلى ${receiver}. الموضوع: ${subject}.`
-                : `إنشاء خطاب: ${subject}. المحتوى: ${objectiveText}. المرسل: ${sender} | المستلم: ${receiver}.`;
-
-            const response = await ai.models.generateContent({
-                model: "gemini-3-flash-preview",
-                contents: { parts: [{ text: userPrompt }] },
-                config: {
-                    systemInstruction,
-                    responseMimeType: "application/json",
-                    responseSchema: {
-                        type: Type.OBJECT,
-                        properties: {
-                            analysis: { type: Type.OBJECT, properties: { strategic_feedback: { type: Type.ARRAY, items: { type: Type.STRING } } } },
-                            variations: {
-                                type: Type.OBJECT,
-                                properties: { neutral: { type: Type.STRING }, strict: { type: Type.STRING }, diplomatic: { type: Type.STRING } },
-                                required: ["neutral", "strict", "diplomatic"]
-                            }
-                        }
-                    }
-                }
+            const result = await generateLetterVariations({
+                isReply: isReplyMode,
+                originalContent: originalLetterContent,
+                objective: objectiveText,
+                sender,
+                receiver,
+                subject,
+                principles: learnedPrinciples.map(p => p.text).join(' | ')
             });
 
-            setGeneratedContent(JSON.parse(response.text || "{}"));
+            setGeneratedContent(result);
             setStep(1);
-        } catch (e) {
-            toast.error("فشلت الصياغة الذكية. يرجى المحاولة لاحقاً.");
+        } catch (e: any) {
+            toast.error(`فشلت الصياغة: ${e.message}`);
         } finally {
             setIsLoading(false);
         }
@@ -219,14 +196,14 @@ export default function LetterGenerator() {
                                     onChange={e => setObjectiveText(e.target.value)}
                                     rows={5}
                                     className="w-full input-inset p-6 rounded-2xl text-base font-bold leading-relaxed border-indigo-500/10 focus:border-indigo-500 shadow-2xl transition-all placeholder-slate-600 bg-slate-950/20"
-                                    placeholder="اشرح هنا ما تريد تحقيقه من هذا الخطاب..."
+                                    placeholder="اشرح هنا ما تريد تحقيقه من هذا الخطاب، وسيقوم النظام بصياغته باحترافية..."
                                 />
                                 
                                 {isReplyMode && (
                                     <div className="space-y-4">
                                         <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest px-1 flex items-center gap-2">
                                             {isLoadingReplies ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-indigo-500"></div> : <SparklesIcon className="w-3 h-3" />}
-                                            مسارات استراتيجية مقترحة
+                                            مسارات استراتيجية مقترحة (الرد السريع)
                                         </p>
                                         <div className="flex flex-col gap-2.5">
                                             {smartReplies.map((reply, i) => (
@@ -246,8 +223,8 @@ export default function LetterGenerator() {
                                                 </button>
                                             ))}
                                             {!isLoadingReplies && smartReplies.length === 0 && (
-                                                <div className="p-10 text-center border-2 border-dashed border-white/5 rounded-2xl">
-                                                    <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">انقر على "توليد" للصياغة اليدوية أو انتظر استكشاف المسارات...</p>
+                                                <div className="text-center py-6 bg-white/5 rounded-2xl border border-dashed border-white/10 text-slate-500 font-bold text-[10px] uppercase tracking-widest">
+                                                    جاري استكشاف مسارات الرد...
                                                 </div>
                                             )}
                                         </div>
