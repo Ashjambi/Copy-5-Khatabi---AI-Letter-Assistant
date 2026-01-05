@@ -16,12 +16,15 @@ export async function onRequestPost(context: any) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
+    // استخدام Flash كنموذج افتراضي لأنه أكثر استقراراً في الكوتا
     let modelName = "gemini-3-flash-preview"; 
     let responseSchema: any = undefined;
     let systemInstruction = `أنت خبير استراتيجيات إدارية عربي رفيع المستوى. ${ARABIC_STRICT_PROTOCOL}`;
+    let prompt = "";
 
     if (task === 'analyze_strategy') {
         systemInstruction += " حلل الخطاب وحدد النوايا وميزان القوة و3 مسارات للرد.";
+        prompt = `حلل الخطاب التالي:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
         responseSchema = {
             type: Type.OBJECT,
             properties: {
@@ -46,10 +49,13 @@ export async function onRequestPost(context: any) {
             required: ["sender_intent", "paths"]
         };
     } else if (task === 'generate_variations') {
-        modelName = "gemini-3-pro-preview";
-        // @FIX: Changed strategy_logic to principles in payload destructuring
+        // تم استخدام Flash هنا لضمان عدم حدوث 429 المتكرر في Pro
         const { isReply, originalContent, objective, sender, receiver, subject, principles } = payload;
-        systemInstruction += ` ولد 3 نسخ (محايدة، حازمة، دبلوماسية) HTML. التخصيص: ${principles || 'رسمية'}`;
+        systemInstruction += ` ولد 3 نسخ (محايدة، حازمة، دبلوماسية) بصيغة HTML. التخصيص: ${principles || 'رسمية'}`;
+        prompt = isReply 
+            ? `رد على الخطاب المرجعي التالي:\n[المحتوى المرجعي]: ${originalContent}\n[الهدف من الرد]: ${objective}\n[المرسل]: ${sender}\n[المستلم]: ${receiver}\n[الموضوع]: ${subject}`
+            : `أنشئ خطاباً جديداً بالبيانات التالية:\n[الموضوع]: ${subject}\n[الهدف]: ${objective}\n[المرسل]: ${sender}\n[المستلم]: ${receiver}`;
+        
         responseSchema = {
             type: Type.OBJECT,
             properties: {
@@ -67,6 +73,7 @@ export async function onRequestPost(context: any) {
         };
     } else if (task === 'analyze_brief') {
         systemInstruction += " لخص الخطاب واستخرج النقاط الرئيسية.";
+        prompt = `لخص هذا الخطاب:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
         responseSchema = {
             type: Type.OBJECT,
             properties: {
@@ -76,6 +83,7 @@ export async function onRequestPost(context: any) {
         };
     } else if (task === 'smart_replies') {
         systemInstruction += " اقترح 3 مسارات للرد على الخطاب الموفر.";
+        prompt = `اقترح ردوداً على:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
         responseSchema = {
             type: Type.ARRAY,
             items: {
@@ -90,6 +98,7 @@ export async function onRequestPost(context: any) {
         };
     } else if (task === 'enhance_letter') {
         systemInstruction += " حسن الصياغة وقدم اقتراحات تعديل واضحة.";
+        prompt = `حسن صياغة النص التالي:\n${payload}`;
         responseSchema = {
             type: Type.ARRAY,
             items: {
@@ -103,17 +112,20 @@ export async function onRequestPost(context: any) {
         };
     } else if (task === 'refine_chat') {
         const { currentBody, userInstruction, context: chatContext } = payload;
+        systemInstruction += " عدل النص الموفر لغوياً وإدارياً وأعده بصيغة HTML.";
+        prompt = `النص الحالي: ${currentBody}\nالسياق: ${chatContext}\nالتوجيه المطلوب: ${userInstruction}`;
+        
         const resp = await ai.models.generateContent({
-            model: "gemini-3-flash-preview",
-            contents: `النص: ${currentBody}\nالسياق: ${chatContext}\nالتوجيه: ${userInstruction}`,
-            config: { systemInstruction: systemInstruction + " عدل النص الموفر لغوياً وإدارياً وأعده بصيغة HTML." }
+            model: modelName,
+            contents: prompt,
+            config: { systemInstruction }
         });
         return new Response(JSON.stringify({ text: resp.text }), { headers: { "Content-Type": "application/json" } });
     }
 
     const response = await ai.models.generateContent({
       model: modelName,
-      contents: typeof payload === 'string' ? payload : JSON.stringify(payload),
+      contents: prompt || JSON.stringify(payload),
       config: {
           systemInstruction,
           responseMimeType: responseSchema ? "application/json" : undefined,
@@ -124,9 +136,15 @@ export async function onRequestPost(context: any) {
     return new Response(response.text, { headers: { "Content-Type": "application/json" } });
 
   } catch (e: any) {
-    const isQuota = e.message?.includes('429');
-    return new Response(JSON.stringify({ error: isQuota ? "تجاوزت حد الكوتا اليومي." : e.message }), { 
-        status: isQuota ? 429 : 500,
+    const errorMsg = e.message || "";
+    const isRateLimit = errorMsg.includes('429') || errorMsg.toLowerCase().includes('limit');
+    
+    return new Response(JSON.stringify({ 
+        error: isRateLimit 
+            ? "النظام مزدحم حالياً (تجاوز حد الطلبات المتزامنة). يرجى الانتظار ثوانٍ والمحاولة مرة أخرى." 
+            : errorMsg 
+    }), { 
+        status: isRateLimit ? 429 : 500,
         headers: { "Content-Type": "application/json" }
     });
   }

@@ -2,22 +2,33 @@
 import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, LetterVariations, StrategicAnalysis } from "../types";
 
 /**
- * دالة مساعدة موحدة لإرسال الطلبات إلى الخادم الوسيط (Proxy)
- * هذا يمنع وجود مفتاح الـ API في الكود المجمع للمتصفح.
+ * دالة مساعدة مع آلية إعادة المحاولة عند حدوث ضغط (429)
  */
-async function callProxy(endpoint: string, body: any) {
-    const response = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
+async function callProxy(endpoint: string, body: any, retries = 2, delay = 1500) {
+    for (let i = 0; i <= retries; i++) {
+        try {
+            const response = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            });
 
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.error || `خطأ في الاتصال بالخادم: ${response.status}`);
+            if (response.status === 429 && i < retries) {
+                // إذا كان خطأ زحام، انتظر قليلاً ثم حاول مرة أخرى
+                await new Promise(resolve => setTimeout(resolve, delay * (i + 1)));
+                continue;
+            }
+
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                throw new Error(errorData.error || `خطأ في الاتصال بالخادم: ${response.status}`);
+            }
+
+            return await response.json();
+        } catch (error) {
+            if (i === retries) throw error;
+        }
     }
-
-    return response.json();
 }
 
 /**
@@ -35,7 +46,6 @@ export async function analyzeStrategicPaths(letter: Letter): Promise<StrategicAn
 
 /**
  * توليد مسودات الخطابات عبر البروكسي
- * @FIX: Updated interface to use 'principles' instead of 'strategy_logic' to match component usage
  */
 export async function generateLetterVariations(params: {
     isReply: boolean,
@@ -68,7 +78,7 @@ export async function extractDetailsFromLetterImage(
     return callProxy('/api/ocr', {
         base64Data,
         mimeType,
-        lettersContext: JSON.stringify(existingLetters.slice(0, 10)) // إرسال سياق محدود للأداء
+        lettersContext: JSON.stringify(existingLetters.slice(0, 10))
     });
 }
 
