@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../App';
-import { Letter, LetterType, Tone, PriorityLevel, ConfidentialityLevel, GeneratorState, LetterVariations, StrategicAnalysis, StrategicPath, SmartReply } from '../types';
+import { Letter, LetterType, Tone, PriorityLevel, ConfidentialityLevel, GeneratorState, LetterVariations, SmartReply } from '../types';
 import { generateSmartReplies, generateLetterVariations, refineLetterWithChat } from '../services/geminiService';
 import { toast } from 'react-hot-toast';
 import { getThemeClasses, sanitizeHTML } from './utils';
@@ -31,7 +31,7 @@ export default function LetterGenerator() {
     const [objectiveText, setObjectiveText] = useState(objective || '');
     const [isContextCollapsed, setIsContextCollapsed] = useState(false);
 
-    // @FIX: Moved Chat Refinement States before their use in useEffect
+    // Chat Refinement States
     const [chatMessages, setChatMessages] = useState<{role: 'user'|'ai', text: string}[]>([]);
     const [userChatInput, setUserChatInput] = useState('');
     const chatEndRef = useRef<HTMLDivElement>(null);
@@ -70,7 +70,6 @@ export default function LetterGenerator() {
         setIsLoading(true);
         try {
             const principles = learnedPrinciples.map(p => p.text).join(' - ');
-            // @FIX: Principles is now part of the accepted params in the updated geminiService
             const result = await generateLetterVariations({
                 isReply: isReplyMode,
                 originalContent: originalLetterContent,
@@ -130,11 +129,11 @@ export default function LetterGenerator() {
                     <h2 className="text-3xl font-black text-white tracking-tight">مركز الصياغة والتحليل</h2>
                     <div className="flex items-center gap-3 mt-2">
                          {isReplyMode ? (
-                            <span className="bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-lg text-[11px] font-black border border-emerald-500/20 flex items-center gap-2 animate-in fade-in duration-500">
+                            <span className="bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-lg text-[11px] font-black border border-emerald-500/20 flex items-center gap-2">
                                 <BotIcon className="w-3.5 h-3.5" /> نمط الرد الاستراتيجي
                             </span>
                          ) : (
-                            <span className="bg-indigo-500/10 text-indigo-400 px-2.5 py-1 rounded-lg text-[11px] font-black border border-indigo-500/20 flex items-center gap-2 animate-in fade-in duration-500">
+                            <span className="bg-indigo-500/10 text-indigo-400 px-2.5 py-1 rounded-lg text-[11px] font-black border border-indigo-500/20 flex items-center gap-2">
                                 <SparklesIcon className="w-3.5 h-3.5" /> نمط الإنشاء الحر
                             </span>
                          )}
@@ -148,33 +147,23 @@ export default function LetterGenerator() {
                 )}
             </div>
 
-            <div className={`grid grid-cols-1 ${isReplyMode ? 'lg:grid-cols-12' : ''} gap-8 items-start`}>
+            <div className={`grid grid-cols-1 ${isReplyMode && step < 2 ? 'lg:grid-cols-12' : ''} gap-8 items-start`}>
                 
-                {/* --- لوحة الخطاب الوارد (المرجع) --- */}
+                {/* --- لوحة الخطاب الوارد (المرجع) - تظهر فقط في الخطوات الأولى --- */}
                 {isReplyMode && parentLetter && step < 2 && (
                     <div className={`${isContextCollapsed ? 'lg:col-span-1' : 'lg:col-span-4'} transition-all duration-500 lg:sticky lg:top-6`}>
-                        <div className={`glass-card border-indigo-500/20 bg-slate-950/40 overflow-hidden shadow-2xl rounded-3xl transition-all duration-500 ${isContextCollapsed ? 'h-[600px] flex flex-col items-center py-6' : ''}`}>
-                            <div className={`p-4 border-white/5 flex items-center justify-between w-full ${isContextCollapsed ? 'flex-col gap-6 border-b-0' : 'bg-indigo-500/10 border-b'}`}>
-                                <div className={`flex items-center gap-2 ${isContextCollapsed ? 'flex-col' : ''}`}>
+                        <div className="glass-card border-indigo-500/20 bg-slate-950/40 overflow-hidden shadow-2xl rounded-3xl">
+                            <div className="p-4 bg-indigo-500/10 border-b border-white/5 flex items-center justify-between">
+                                <div className="flex items-center gap-2">
                                     <InboxInIcon className="w-5 h-5 text-indigo-400" />
-                                    {!isContextCollapsed && <span className="font-black text-[11px] text-indigo-300 uppercase tracking-widest animate-in fade-in duration-500">الخطاب الوارد المرجعي</span>}
+                                    {!isContextCollapsed && <span className="font-black text-[11px] text-indigo-300 uppercase tracking-widest">الخطاب الوارد المرجعي</span>}
                                 </div>
-                                <button 
-                                    onClick={() => setIsContextCollapsed(!isContextCollapsed)} 
-                                    className={`p-2 hover:bg-white/10 rounded-xl transition-all duration-300 group ${isContextCollapsed ? 'order-first' : ''}`}
-                                    title={isContextCollapsed ? "توسيع العرض" : "طي العرض"}
-                                >
-                                    <ArrowRightLeftIcon className={`w-4 h-4 text-slate-500 group-hover:text-indigo-400 transition-all duration-500 ${isContextCollapsed ? 'rotate-180 scale-125' : ''}`} />
+                                <button onClick={() => setIsContextCollapsed(!isContextCollapsed)} className="p-1.5 hover:bg-white/10 rounded-lg transition-colors">
+                                    <ArrowRightLeftIcon className={`w-4 h-4 text-slate-500 ${isContextCollapsed ? 'rotate-180' : ''}`} />
                                 </button>
                             </div>
                             
-                            {isContextCollapsed ? (
-                                <div className="flex-1 flex items-center justify-center select-none cursor-pointer" onClick={() => setIsContextCollapsed(false)}>
-                                    <span className="font-black text-[10px] text-slate-600 uppercase tracking-[0.3em] vertical-rl rotate-180 whitespace-nowrap hover:text-indigo-400 transition-colors">
-                                        استعراض المعاملة المرجعية
-                                    </span>
-                                </div>
-                            ) : (
+                            {!isContextCollapsed && (
                                 <div className="p-6 space-y-6 animate-in fade-in slide-in-from-right-4 duration-500">
                                     <h3 className="text-lg font-black text-white leading-snug">{parentLetter.subject}</h3>
                                     <div className="text-[13px] text-slate-400 leading-relaxed max-h-[500px] overflow-y-auto custom-scrollbar prose prose-invert prose-sm" dangerouslySetInnerHTML={{ __html: sanitizeHTML(parentLetter.body) }} />
@@ -185,10 +174,11 @@ export default function LetterGenerator() {
                 )}
 
                 {/* --- منطقة العمل الرئيسية --- */}
-                <div className={`${isReplyMode ? (isContextCollapsed ? 'lg:col-span-11' : (step === 2 ? 'lg:col-span-12' : 'lg:col-span-8')) : 'max-w-5xl mx-auto w-full'} transition-all duration-500`}>
+                <div className={`${isReplyMode && step < 2 ? (isContextCollapsed ? 'lg:col-span-11' : 'lg:col-span-8') : 'max-w-5xl mx-auto w-full'} transition-all duration-500`}>
                     
                     {step === 0 && (
                         <div className="glass-card p-8 space-y-8 animate-in slide-in-from-bottom-6 duration-700 border-white/10 rounded-3xl shadow-3xl">
+                            {/* ... حقول المرسل والمستقبل ... */}
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-950/40 p-6 rounded-3xl border border-white/5 shadow-inner">
                                 <div className="space-y-1.5">
                                     <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">المرسل (من)</label>
@@ -229,7 +219,7 @@ export default function LetterGenerator() {
                                                 <button 
                                                     key={i} 
                                                     onClick={() => { setObjectiveText(reply.objective); updateState({ tone: reply.tone as Tone }); }}
-                                                    className={`p-5 rounded-2xl border text-right transition-all group shadow-lg flex flex-col justify-between min-h-[140px] hover:-translate-y-1 ${objectiveText === reply.objective ? 'bg-indigo-600/20 border-indigo-500 ring-2 ring-indigo-500/20' : 'bg-white/5 border-white/5 hover:border-indigo-500/40'}`}
+                                                    className={`p-5 rounded-2xl border text-right transition-all group shadow-lg flex flex-col justify-between min-h-[140px] ${objectiveText === reply.objective ? 'bg-indigo-600/20 border-indigo-500' : 'bg-white/5 border-white/5 hover:border-indigo-500/40'}`}
                                                 >
                                                     <span className={`block text-[9px] font-black uppercase mb-3 tracking-widest ${objectiveText === reply.objective ? 'text-indigo-400' : 'text-slate-500'}`}>{reply.title}</span>
                                                     <p className={`text-[12px] font-bold leading-relaxed ${objectiveText === reply.objective ? 'text-white' : 'text-slate-300'}`}>{reply.objective}</p>
@@ -241,7 +231,7 @@ export default function LetterGenerator() {
                             </div>
 
                             <div className="flex justify-center pt-4">
-                                <button onClick={handleGenerate} disabled={isLoading || !objectiveText.trim()} className={`px-20 py-5 rounded-2xl font-black text-lg flex items-center gap-4 transition-all shadow-[0_20px_60px_rgba(99,102,241,0.2)] active:scale-95 ${isLoading ? 'bg-slate-700 opacity-50 cursor-not-allowed' : theme.bg + ' text-white hover:brightness-110'}`}>
+                                <button onClick={handleGenerate} disabled={isLoading || !objectiveText.trim()} className={`px-20 py-5 rounded-2xl font-black text-lg flex items-center gap-4 transition-all shadow-[0_20px_60px_rgba(99,102,241,0.2)] active:scale-95 ${isLoading ? 'bg-slate-700 opacity-50' : theme.bg + ' text-white hover:brightness-110'}`}>
                                     {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : <SparklesIcon className="w-6 h-6" />}
                                     <span>{isLoading ? 'جاري التحليل...' : 'توليد المسودات الذكية'}</span>
                                 </button>
@@ -251,6 +241,7 @@ export default function LetterGenerator() {
 
                     {step === 1 && generatedContent && (
                         <div className="space-y-8 animate-in fade-in zoom-in-95 duration-500">
+                             {/* ... تحليل المسار الاستراتيجي والخيارات ... */}
                              <div className="bg-indigo-500/10 border border-indigo-500/20 p-6 rounded-3xl flex items-start gap-5 shadow-2xl relative overflow-hidden">
                                 <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500"></div>
                                 <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 shrink-0"><BotIcon className="w-8 h-8" /></div>
@@ -282,80 +273,75 @@ export default function LetterGenerator() {
                     )}
 
                     {step === 2 && (
-                        <div className="space-y-8 animate-in slide-in-from-right-10 duration-700">
-                             <div className="flex items-center justify-between px-2">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
-                                    <h3 className="text-xl font-black text-white uppercase tracking-tight">التحرير النهائي والتنقيح بالحوار</h3>
-                                </div>
+                        <div className="max-w-5xl mx-auto space-y-8 animate-in slide-in-from-bottom-10 duration-700">
+                             <div className="flex items-center gap-3 px-2">
+                                <div className="w-1.5 h-6 bg-emerald-500 rounded-full shadow-[0_0_10px_rgba(16,185,129,0.5)]"></div>
+                                <h3 className="text-xl font-black text-white uppercase tracking-tight">التحرير النهائي والتنقيح بالحوار</h3>
                              </div>
 
-                             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
-                                <div className="xl:col-span-8 space-y-6">
-                                    <div className="shadow-3xl rounded-3xl overflow-hidden border border-white/5">
-                                        <RichTextEditor value={finalBody} onChange={setFinalBody} ringColor={theme.ring} minHeight="min-h-[700px]" />
+                             {/* منطقة المحرر - تأخذ العرض الكامل */}
+                             <div className="shadow-3xl rounded-3xl overflow-hidden border border-white/5">
+                                <RichTextEditor value={finalBody} onChange={setFinalBody} ringColor={theme.ring} minHeight="min-h-[500px]" />
+                             </div>
+
+                             {/* منصة الحوار - انتقلت للأسفل ومساوية للمحرر في العرض */}
+                             <div className="glass-card border-indigo-500/30 bg-slate-950/60 p-6 rounded-[2.5rem] flex flex-col h-[500px] shadow-3xl overflow-hidden">
+                                <div className="flex items-center gap-4 border-b border-white/5 pb-5 mb-5">
+                                    <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 shadow-inner"><MessageSquareIcon className="w-6 h-6" /></div>
+                                    <div>
+                                        <h3 className="text-base font-black text-white">منصة الحوار والتنقيح الذكي</h3>
+                                        <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">اطلب تعديلات محددة على النص أعلاه</p>
                                     </div>
-                                    
-                                    <div className="bg-slate-900/40 p-6 rounded-3xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
-                                        <div className="flex-1">
-                                            <p className="text-sm font-bold text-slate-300">هل اكتملت الصياغة؟</p>
-                                            <p className="text-[11px] text-slate-500 font-bold mt-1">بمجرد الحفظ، سيتم تسجيل المعاملة في أرشيف الصادر واعتمادها رسمياً.</p>
+                                </div>
+
+                                <div className="flex-1 overflow-y-auto custom-scrollbar space-y-5 px-1 pb-4">
+                                    {chatMessages.length === 0 && (
+                                        <div className="h-full flex flex-col items-center justify-center opacity-20 text-center px-6">
+                                            <BotIcon className="w-16 h-16 mb-4" />
+                                            <p className="text-sm font-black">المسودة جاهزة للمراجعة. يمكنك طلبتغييرات مثل: "اجعلها أكثر اختصاراً" أو "أضف فقرة حول الميزانية".</p>
                                         </div>
-                                        <button onClick={handleFinalSave} className="px-16 py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-lg shadow-2xl shadow-emerald-600/20 transition-all flex items-center gap-3 active:scale-95 group">
-                                            <CheckCircleIcon className="w-6 h-6 group-hover:scale-110 transition-transform" /> اعتماد وحفظ المعاملة
+                                    )}
+                                    {chatMessages.map((msg, i) => (
+                                        <div key={i} className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'} animate-in fade-in`}>
+                                            <div className={`max-w-[85%] p-4 rounded-[1.5rem] text-[13px] font-bold flex items-start gap-3 shadow-lg ${msg.role === 'user' ? 'bg-indigo-600/20 text-indigo-100 border border-indigo-500/20 rounded-tr-none' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-tl-none'}`}>
+                                                {msg.role === 'user' ? <UserIcon className="w-5 h-5 shrink-0 mt-0.5 text-indigo-400" /> : <BotIcon className="w-5 h-5 shrink-0 mt-0.5 text-slate-500" />}
+                                                <p className="leading-relaxed">{msg.text}</p>
+                                            </div>
+                                        </div>
+                                    ))}
+                                    <div ref={chatEndRef} />
+                                </div>
+                                
+                                <div className="mt-4 pt-4 border-t border-white/5">
+                                    <div className="relative group">
+                                        <textarea 
+                                            rows={2}
+                                            value={userChatInput} 
+                                            onChange={e => setUserChatInput(e.target.value)}
+                                            onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatRefine(); } }}
+                                            placeholder="اكتب تعليمات التعديل هنا..."
+                                            className="w-full bg-slate-900 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner resize-none pr-14"
+                                        />
+                                        <button 
+                                            onClick={handleChatRefine}
+                                            disabled={isLoading || !userChatInput.trim()}
+                                            className="absolute bottom-3.5 right-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white p-2.5 rounded-xl transition-all shadow-xl active:scale-90"
+                                        >
+                                            {isLoading ? <div className="animate-spin h-5 w-5 border-2 border-white/20 border-b-white rounded-full"></div> : <SendIcon className="w-5 h-5 rotate-180" />}
                                         </button>
                                     </div>
                                 </div>
+                             </div>
 
-                                <div className="xl:col-span-4 lg:sticky lg:top-6 space-y-6">
-                                    <div className="glass-card border-indigo-500/30 bg-slate-950/60 p-6 rounded-[2.5rem] flex flex-col h-[835px] shadow-3xl overflow-hidden">
-                                        <div className="flex items-center gap-4 border-b border-white/5 pb-5 mb-5">
-                                            <div className="p-2.5 bg-indigo-500/20 rounded-xl text-indigo-400 shadow-inner"><MessageSquareIcon className="w-6 h-6" /></div>
-                                            <div>
-                                                <h3 className="text-base font-black text-white">منصة الحوار والتنقيح</h3>
-                                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">تحدث مع الخبير الإداري لتعديل المتن</p>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex-1 overflow-y-auto custom-scrollbar space-y-5 px-1 pb-4">
-                                            {chatMessages.length === 0 && (
-                                                <div className="h-full flex flex-col items-center justify-center opacity-20 text-center px-6">
-                                                    <BotIcon className="w-16 h-16 mb-4" />
-                                                    <p className="text-sm font-black">المسودة جاهزة للمراجعة.</p>
-                                                </div>
-                                            )}
-                                            {chatMessages.map((msg, i) => (
-                                                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-start' : 'justify-end'} animate-in fade-in`}>
-                                                    <div className={`max-w-[90%] p-4 rounded-[1.5rem] text-[13px] font-bold flex items-start gap-3 shadow-lg ${msg.role === 'user' ? 'bg-indigo-600/20 text-indigo-100 border border-indigo-500/20 rounded-tr-none' : 'bg-slate-800 text-slate-200 border border-white/5 rounded-tl-none'}`}>
-                                                        {msg.role === 'user' ? <UserIcon className="w-5 h-5 shrink-0 mt-0.5 text-indigo-400" /> : <BotIcon className="w-5 h-5 shrink-0 mt-0.5 text-slate-500" />}
-                                                        <p className="leading-relaxed">{msg.text}</p>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                            <div ref={chatEndRef} />
-                                        </div>
-                                        
-                                        <div className="mt-4 pt-4 border-t border-white/5">
-                                            <div className="relative group">
-                                                <textarea 
-                                                    rows={3}
-                                                    value={userChatInput} 
-                                                    onChange={e => setUserChatInput(e.target.value)}
-                                                    onKeyDown={e => { if(e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleChatRefine(); } }}
-                                                    placeholder="اكتب تعليمات التعديل هنا..."
-                                                    className="w-full bg-slate-900 border border-white/10 rounded-2xl px-5 py-4 text-sm font-bold text-white focus:ring-2 focus:ring-indigo-500 transition-all outline-none shadow-inner resize-none pr-14"
-                                                />
-                                                <button 
-                                                    onClick={handleChatRefine}
-                                                    disabled={isLoading || !userChatInput.trim()}
-                                                    className="absolute bottom-4 right-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white p-3 rounded-xl transition-all shadow-xl active:scale-90"
-                                                >
-                                                    {isLoading ? <div className="animate-spin h-5 w-5 border-2 border-white/20 border-b-white rounded-full"></div> : <SendIcon className="w-5 h-5 rotate-180" />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
+                             {/* شريط الإجراءات النهائي - في الأسفل */}
+                             <div className="bg-slate-900/40 p-6 rounded-3xl border border-white/5 flex flex-col md:flex-row items-center justify-between gap-6 shadow-xl">
+                                <div className="flex-1">
+                                    <p className="text-sm font-bold text-slate-300">هل اكتملت الصياغة؟</p>
+                                    <p className="text-[11px] text-slate-500 font-bold mt-1">سيتم أرشفة المعاملة برقم صادر فريد بمجرد الحفظ.</p>
                                 </div>
+                                <button onClick={handleFinalSave} className="px-12 py-5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-black text-lg shadow-2xl shadow-emerald-600/20 transition-all flex items-center gap-3 active:scale-95 group">
+                                    <CheckCircleIcon className="w-6 h-6 group-hover:scale-110 transition-transform" /> اعتماد وحفظ المعاملة
+                                </button>
                              </div>
                         </div>
                     )}
