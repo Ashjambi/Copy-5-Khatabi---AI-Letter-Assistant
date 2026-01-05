@@ -30,7 +30,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   
   const [isEditing, setIsEditing] = useState(false);
   const [editedBody, setEditedBody] = useState(letter.body);
-  const attachmentInputRef = useRef<HTMLInputElement>(null);
   const [activeTab, setActiveTab] = useState<'content' | 'comments' | 'history'>('content');
   const [newComment, setNewComment] = useState('');
   const [isSummarizing, setIsSummarizing] = useState(false);
@@ -40,7 +39,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
 
   const [isLoadingBrief, setIsLoadingBrief] = useState(false);
   const [isLoadingStrategy, setIsLoadingStrategy] = useState(false);
-  const [isLoadingSmartReplies, setIsLoadingSmartReplies] = useState(false);
 
   const theme = getThemeClasses(settings.primaryColor);
   const aiBrief = letter.aiCache?.brief;
@@ -96,7 +94,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   }, [letter, allLetters]);
 
   return (
-    <div className="p-4 lg:p-6 space-y-8 animate-in fade-in duration-500 pb-20">
+    <div className="p-4 lg:p-6 space-y-8 animate-in fade-in duration-500 pb-20 relative">
       
       {/* قسم المساعد الاستراتيجي المطور */}
       <div className="bg-indigo-500/5 border border-indigo-500/10 p-6 rounded-[2.5rem] relative overflow-hidden group">
@@ -131,8 +129,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
 
           {(aiBrief || aiStrategy) && (
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-in slide-in-from-top-4 duration-700">
-                  
-                  {/* الرؤية الاستراتيجية ونبرة الخطاب */}
                   <div className="lg:col-span-8 space-y-6">
                       {aiStrategy && (
                         <div className="bg-slate-950/60 p-6 rounded-3xl border border-white/5 shadow-inner">
@@ -172,7 +168,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                       )}
                   </div>
 
-                  {/* النقاط الجوهرية (Action Items) */}
                   <div className="lg:col-span-4 space-y-4">
                       <div className="bg-slate-900/80 p-6 rounded-3xl border border-white/5 h-full shadow-2xl">
                           <h4 className="text-xs font-black text-white mb-5 flex items-center gap-2">
@@ -186,9 +181,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                                       <span className="text-xs text-slate-300 font-bold leading-relaxed group-hover:text-white transition-colors">{point}</span>
                                   </li>
                               ))}
-                              {(!aiBrief || aiBrief.keyPoints.length === 0) && !isLoadingBrief && (
-                                  <p className="text-[11px] text-slate-600 font-bold text-center py-4 italic">لا توجد نقاط معالجة مستخرجة حالياً.</p>
-                              )}
                           </ul>
                       </div>
                   </div>
@@ -196,7 +188,72 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
           )}
       </div>
 
-      {/* سلسلة المراسلات - المخطط الزمني */}
+      {/* تفاصيل وبطاقة المعاملة */}
+      <div className="py-6 border-b border-white/10 relative">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+              <h3 className="text-lg font-black text-slate-300">بطاقة المعاملة</h3>
+              
+              {/* شريط الإجراءات السريعة - مُعاد تصميمه ليكون مدمجاً وغير حاجب */}
+              {letter.status !== LetterStatus.ARCHIVED && (
+                  <div className="flex items-center gap-2 bg-slate-950/40 p-1.5 rounded-2xl border border-white/10 shadow-inner no-print">
+                      <button 
+                        onClick={() => onReply(letter)} 
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[11px] font-black transition-all shadow-lg active:scale-95 min-w-[120px]"
+                      >
+                        <SendIcon className="w-3.5 h-3.5" />
+                        إنشاء رد ذكي
+                      </button>
+                      <button 
+                        onClick={() => handleStatusChange(LetterStatus.ARCHIVED, "تمت أرشفة المعاملة")} 
+                        className="flex items-center justify-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 border border-white/10 rounded-xl text-[11px] font-black transition-all active:scale-95 min-w-[120px]"
+                      >
+                        <ArchiveIcon className="w-3.5 h-3.5" />
+                        أرشفة المعاملة
+                      </button>
+                  </div>
+              )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
+              <DetailItem label="المرسل" value={letter.from} />
+              <DetailItem label={letter.correspondenceType === CorrespondenceType.INBOUND ? "التصنيف الإداري" : "إلى"} value={letter.to} />
+              <DetailItem label="التاريخ" value={letter.date} />
+              <DetailItem label="رقم المعاملة" value={letter.internalRefNumber || '---'} />
+              <DetailItem label="الأهمية" children={getPriorityChip(letter.priority || PriorityLevel.NORMAL)} />
+              <DetailItem label="الحالة" children={getStatusChip(letter.status)} />
+          </div>
+      </div>
+
+      {/* محتوى المعاملة */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <div className="w-1.5 h-5 bg-indigo-500 rounded-full"></div>
+                <h3 className="text-xl font-black text-slate-100">نص المعاملة</h3>
+            </div>
+            <div className="flex gap-2">
+                <button onClick={() => window.print()} className="p-2 hover:bg-white/10 rounded-lg text-slate-400 transition-colors" title="طباعة"><PrinterIcon className="w-5 h-5"/></button>
+                {!isEditing && <button onClick={() => setIsEditing(true)} className="text-xs font-black text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 px-3 py-1.5 rounded-lg border border-indigo-500/20 transition-all">تعديل النص</button>}
+            </div>
+        </div>
+        
+        {isEditing ? (
+            <div className="animate-in fade-in duration-300">
+                <RichTextEditor value={editedBody} onChange={setEditedBody} ringColor={theme.ring} />
+                <div className="mt-4 flex justify-end gap-3">
+                    <button onClick={() => setIsEditing(false)} className="px-6 py-2 text-sm font-bold text-slate-400">إلغاء</button>
+                    <button onClick={() => { dispatch({ type: 'UPDATE_LETTER', payload: { ...letter, body: editedBody } }); setIsEditing(false); toast.success("تم الحفظ"); }} className={`px-8 py-2 text-sm font-black text-white ${theme.bg} rounded-xl shadow-lg`}>اعتماد التعديلات</button>
+                </div>
+            </div>
+        ) : (
+            <div className="rounded-3xl border border-white/10 bg-white/95 text-black shadow-2xl p-8 md:p-12 relative overflow-hidden group/text">
+                <div className="absolute top-4 right-4 text-[10px] text-slate-300 font-black uppercase tracking-widest pointer-events-none opacity-20 group-hover/text:opacity-40 transition-opacity">نص الخطاب الرسمي</div>
+                <div className="prose max-w-none font-bold text-slate-900 text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: sanitizeHTML(letter.body) }} />
+            </div>
+        )}
+      </div>
+
+      {/* سلسلة المراسلات - المخطط الزمني (في الأسفل دائماً كمرحلة نهائية) */}
       {threadLetters && threadLetters.length > 1 && (
         <div className="glass-card border border-white/10 p-6 overflow-hidden">
              <div className="flex items-center gap-3 mb-8">
@@ -226,53 +283,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                 })}
              </div>
         </div>
-      )}
-
-      {/* تفاصيل وبطاقة المعاملة */}
-      <div className="py-6 border-b border-white/10">
-          <h3 className="text-lg font-black text-slate-300 mb-4">بطاقة المعاملة</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-6">
-              <DetailItem label="المرسل" value={letter.from} /><DetailItem label={letter.correspondenceType === CorrespondenceType.INBOUND ? "التصنيف الإداري" : "إلى"} value={letter.to} /><DetailItem label="التاريخ" value={letter.date} /><DetailItem label="رقم المعاملة" value={letter.internalRefNumber || '---'} /><DetailItem label="الأهمية" children={getPriorityChip(letter.priority || PriorityLevel.NORMAL)} /><DetailItem label="الحالة" children={getStatusChip(letter.status)} />
-          </div>
-      </div>
-
-      {/* محتوى المعاملة */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-            <h3 className="text-xl font-black text-slate-100">نص المعاملة</h3>
-            <div className="flex gap-2">
-                <button onClick={() => window.print()} className="p-2 hover:bg-white/10 rounded-lg text-slate-400 transition-colors"><PrinterIcon className="w-5 h-5"/></button>
-                {!isEditing && <button onClick={() => setIsEditing(true)} className="text-sm font-black text-indigo-400 hover:text-indigo-300 px-3 py-1">تعديل النص</button>}
-            </div>
-        </div>
-        
-        {isEditing ? (
-            <div className="animate-in fade-in duration-300">
-                <RichTextEditor value={editedBody} onChange={setEditedBody} ringColor={theme.ring} />
-                <div className="mt-4 flex justify-end gap-3">
-                    <button onClick={() => setIsEditing(false)} className="px-6 py-2 text-sm font-bold text-slate-400">إلغاء</button>
-                    <button onClick={() => { dispatch({ type: 'UPDATE_LETTER', payload: { ...letter, body: editedBody } }); setIsEditing(false); toast.success("تم الحفظ"); }} className={`px-8 py-2 text-sm font-black text-white ${theme.bg} rounded-xl shadow-lg`}>اعتماد التعديلات</button>
-                </div>
-            </div>
-        ) : (
-            <div className="rounded-2xl border border-white/10 bg-white/95 text-black shadow-2xl p-8 md:p-12 relative">
-                <div className="absolute top-4 right-4 text-[10px] text-slate-300 font-black uppercase tracking-widest pointer-events-none opacity-20">نص الخطاب الرسمي</div>
-                <div className="prose max-w-none font-bold text-slate-900 text-lg leading-relaxed" dangerouslySetInnerHTML={{ __html: sanitizeHTML(letter.body) }} />
-            </div>
-        )}
-      </div>
-
-      {/* إجراءات الرد والأرشفة */}
-      {letter.status !== LetterStatus.ARCHIVED && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4 bg-slate-900/90 backdrop-blur-xl border border-white/10 p-3 rounded-2xl shadow-2xl z-40 animate-in slide-in-from-bottom-10 duration-700 no-print ring-1 ring-white/10">
-                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-4 border-l border-white/10">إجراءات سريعة</span>
-                <button onClick={() => onReply(letter)} className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-sm transition-all shadow-lg active:scale-95 group">
-                    <SendIcon className="w-4 h-4 group-hover:translate-x-[-2px] group-hover:translate-y-[-2px] transition-transform" /> إنشاء رد ذكي
-                </button>
-                <button onClick={() => handleStatusChange(LetterStatus.ARCHIVED, "تمت أرشفة المعاملة")} className="flex items-center gap-2 px-6 py-2.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-xl font-black text-sm transition-all border border-white/10">
-                    <ArchiveIcon className="w-4 h-4" /> أرشفة
-                </button>
-          </div>
       )}
     </div>
   );
