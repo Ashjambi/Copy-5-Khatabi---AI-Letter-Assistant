@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect, useReducer, createContext, useContext } from 'react';
 import { Letter, View, CorrespondenceType, LetterStatus, Tone, Template, LearnedPrinciple, Notification, CompanySettings, Comment, ApprovalRecord, GeneratorState, LetterType, PriorityLevel, ConfidentialityLevel, InboundLetterFormState, User, UserRole } from './types';
+import React, { useState, useEffect, useReducer, createContext, useContext, useRef } from 'react';
 import { mockLetters } from './data/mockData';
 import { mockTemplates } from './data/mockTemplates';
 import { mockNotifications } from './data/mockNotifications';
@@ -8,6 +8,7 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MainContent from './components/MainContent';
 import { Toaster, toast } from 'react-hot-toast';
+import { FileSystemService } from './services/fileSystemService';
 
 export type ReplyContextType = {
   letterId: string;
@@ -23,9 +24,9 @@ const defaultSettings: CompanySettings = {
   companyName: 'خطابي',
   companyLogo: '', 
   primaryColor: 'indigo',
-  departments: ['الإدارة العامة', 'الموارد البشرية', 'الشؤون القانونية', 'الإدارة المالية', 'تقنية المعلومات'], 
-  defaultDepartment: 'الإدارة العامة',
-  externalEntities: ['وزارة التجارة', 'شركة الكهرباء', 'مجموعة الراجحي'], 
+  departments: ['مكتب المدير العام', 'الإدارة المالية', 'الموارد البشرية', 'المشاريع'],
+  defaultDepartment: 'مكتب المدير العام',
+  externalEntities: ['وزارة التجارة', 'شركة الكهرباء', 'مجموعة التطوير العقاري'],
   letterFooter: '',
   globalAIInstruction: '',
   users: [],
@@ -66,9 +67,6 @@ type AppAction =
   | { type: 'IMPORT_LETTERS_BULK'; payload: Letter[] }
   | { type: 'SET_REPLY_CONTEXT'; payload: ReplyContextType }
   | { type: 'UPDATE_SETTINGS'; payload: CompanySettings }
-  | { type: 'ADD_COMMENT'; payload: { letterId: string; text: string } }
-  | { type: 'MARK_ALL_NOTIFICATIONS_READ' }
-  | { type: 'UPDATE_CATEGORY_NAME'; payload: { oldName: string; newName: string } }
   | { type: 'UPDATE_GENERATOR_STATE'; payload: Partial<GeneratorState> }
   | { type: 'RESET_GENERATOR_STATE' }
   | { type: 'UPDATE_INBOUND_FORM_STATE'; payload: Partial<InboundLetterFormState> }
@@ -79,7 +77,7 @@ const initialGeneratorState: GeneratorState = {
     sender: '',
     receiver: '',
     subject: '',
-    letterType: LetterType.RESPONSE,
+    letterType: LetterType.MISCELLANEOUS,
     objective: '',
     attachments: [],
     cc: [],
@@ -96,6 +94,8 @@ const initialGeneratorState: GeneratorState = {
     contextualReferences: null,
     templateFields: {},
     activeTemplateObjective: '',
+    referenceId: undefined,
+    originalLetterContent: '',
 };
 
 const initialInboundLetterFormState: InboundLetterFormState = {
@@ -108,6 +108,7 @@ const initialInboundLetterFormState: InboundLetterFormState = {
     category: '',
     attachments: [],
     summary: '',
+    referenceId: undefined,
     externalRefNumber: '',
     priority: PriorityLevel.NORMAL,
     confidentiality: ConfidentialityLevel.NORMAL,
@@ -158,22 +159,23 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case 'IMPORT_LETTERS_BULK':
         return { ...state, letters: [...action.payload, ...state.letters] };
     case 'SET_REPLY_CONTEXT': {
-        const letter = state.letters.find(l => l.id === action.payload.letterId);
+        const { letterId, sender, recipient, subject, mode, objective, tone } = action.payload;
+        const targetLetter = state.letters.find(l => l.id === letterId);
         return {
             ...state,
             replyContext: action.payload,
-            currentView: View.GENERATOR,
             generatorState: {
                 ...initialGeneratorState,
-                referenceId: action.payload.letterId,
-                subject: action.payload.subject,
-                sender: action.payload.sender,
-                receiver: action.payload.recipient,
-                letterType: action.payload.mode === 'reply' ? LetterType.RESPONSE : LetterType.SUPPLEMENTARY,
-                originalLetterContent: letter?.body || '',
-                objective: action.payload.objective || '',
-                tone: action.payload.tone || Tone.NEUTRAL
-            }
+                sender: sender, 
+                receiver: recipient,
+                subject: subject,
+                referenceId: letterId,
+                letterType: mode === 'reply' ? LetterType.RESPONSE : LetterType.SUPPLEMENTARY,
+                objective: objective || '',
+                tone: tone || Tone.NEUTRAL,
+                originalLetterContent: targetLetter?.body || '',
+            },
+            currentView: View.GENERATOR
         };
     }
     case 'CREATE_LETTER': {
@@ -187,7 +189,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
             status: LetterStatus.APPROVED,
             correspondenceType: CorrespondenceType.OUTBOUND,
             approvalHistory: [{ action: 'تم إنشاء الخطاب واعتماده', date: new Date().toLocaleDateString('ar-SA-u-nu-latn') }],
-            creatorId: state.currentUser?.id,
         };
         return { ...state, letters: [letter, ...state.letters], selectedLetterId: letter.id, currentView: View.DETAILS };
     }
@@ -207,23 +208,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
     }
     case 'UPDATE_SETTINGS':
         return { ...state, companySettings: action.payload };
-    case 'RESET_GENERATOR_STATE':
-        return { ...state, generatorState: { ...initialGeneratorState, sender: state.companySettings.defaultDepartment } };
     case 'UPDATE_GENERATOR_STATE':
         return { ...state, generatorState: { ...state.generatorState, ...action.payload } };
+    case 'RESET_GENERATOR_STATE':
+        return { ...state, generatorState: initialGeneratorState };
     case 'UPDATE_INBOUND_FORM_STATE':
         return { ...state, inboundLetterFormState: { ...state.inboundLetterFormState, ...action.payload } };
     case 'RESET_INBOUND_FORM_STATE':
         return { ...state, inboundLetterFormState: initialInboundLetterFormState };
     case 'TOGGLE_SIDEBAR':
         return { ...state, isSidebarCollapsed: !state.isSidebarCollapsed };
-    case 'ADD_COMMENT':
-        const newComment: Comment = { id: Date.now().toString(), letterId: action.payload.letterId, text: action.payload.text, createdAt: new Date().toLocaleString('ar-SA') };
-        return { ...state, comments: [newComment, ...state.comments] };
-    case 'MARK_ALL_NOTIFICATIONS_READ':
-        return { ...state, notifications: state.notifications.map(n => ({ ...n, read: true })) };
-    case 'UPDATE_CATEGORY_NAME':
-        return { ...state, letters: state.letters.map(l => l.category === action.payload.oldName ? { ...l, category: action.payload.newName } : l) };
     default:
         return state;
   }
@@ -233,13 +227,13 @@ export default function App() {
     const [state, dispatch] = useReducer(appReducer, initialState);
     
     useEffect(() => {
-        const stored = localStorage.getItem('khatabi_settings');
-        if (stored) dispatch({ type: 'LOAD_STATE', payload: { companySettings: JSON.parse(stored) } });
+        const stored = localStorage.getItem('khatabi_settings_v2');
+        if (stored) dispatch({ type: 'LOAD_STATE', payload: JSON.parse(stored) });
     }, []);
 
     useEffect(() => {
-        localStorage.setItem('khatabi_settings', JSON.stringify(state.companySettings));
-    }, [state.companySettings]);
+        localStorage.setItem('khatabi_settings_v2', JSON.stringify(state));
+    }, [state]);
 
     return (
         <AppContext.Provider value={{ state, dispatch }}>
