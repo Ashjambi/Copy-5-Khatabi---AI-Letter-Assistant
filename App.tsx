@@ -8,7 +8,6 @@ import Sidebar from './components/Sidebar';
 import Header from './components/Header';
 import MainContent from './components/MainContent';
 import { Toaster, toast } from 'react-hot-toast';
-import { FileSystemService } from './services/fileSystemService';
 
 export type ReplyContextType = {
   letterId: string;
@@ -71,7 +70,8 @@ type AppAction =
   | { type: 'RESET_GENERATOR_STATE' }
   | { type: 'UPDATE_INBOUND_FORM_STATE'; payload: Partial<InboundLetterFormState> }
   | { type: 'RESET_INBOUND_FORM_STATE' }
-  | { type: 'TOGGLE_SIDEBAR' };
+  | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'UPDATE_CATEGORY_NAME', payload: { oldName: string, newName: string } };
 
 const initialGeneratorState: GeneratorState = {
     sender: '',
@@ -218,6 +218,8 @@ function appReducer(state: AppState, action: AppAction): AppState {
         return { ...state, inboundLetterFormState: initialInboundLetterFormState };
     case 'TOGGLE_SIDEBAR':
         return { ...state, isSidebarCollapsed: !state.isSidebarCollapsed };
+    case 'UPDATE_CATEGORY_NAME':
+        return { ...state, letters: state.letters.map(l => l.category === action.payload.oldName ? { ...l, category: action.payload.newName } : l) };
     default:
         return state;
   }
@@ -227,12 +229,12 @@ export default function App() {
     const [state, dispatch] = useReducer(appReducer, initialState);
     
     useEffect(() => {
-        const stored = localStorage.getItem('khatabi_settings_v2');
+        const stored = localStorage.getItem('khatabi_app_state_v3');
         if (stored) dispatch({ type: 'LOAD_STATE', payload: JSON.parse(stored) });
     }, []);
 
     useEffect(() => {
-        localStorage.setItem('khatabi_settings_v2', JSON.stringify(state));
+        localStorage.setItem('khatabi_app_state_v3', JSON.stringify(state));
     }, [state]);
 
     return (
