@@ -1,12 +1,12 @@
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useApp } from '../App';
-import { Letter, LetterType, Tone, PriorityLevel, ConfidentialityLevel, GeneratorState, LetterVariations, StrategicAnalysis, StrategicPath } from '../types';
+import { Letter, LetterType, Tone, PriorityLevel, ConfidentialityLevel, GeneratorState, LetterVariations, StrategicAnalysis } from '../types';
 import { analyzeStrategicPaths, generateLetterVariations, refineLetterWithChat } from '../services/geminiService';
 import { toast } from 'react-hot-toast';
 import { getThemeClasses, sanitizeHTML } from './utils';
 import RichTextEditor from './RichTextEditor';
-import { SparklesIcon, BotIcon, InboxInIcon, CheckCircleIcon, Undo2Icon, MessageSquareIcon, SendIcon, UserIcon, ShieldCheckIcon, BarChart3Icon, LightbulbIcon } from './icons';
+import { SparklesIcon, BotIcon, InboxInIcon, CheckCircleIcon, Undo2Icon, MessageSquareIcon, SendIcon, ShieldCheckIcon, BarChart3Icon, LightbulbIcon } from './icons';
 
 export default function LetterGenerator() {
     const { state, dispatch } = useApp();
@@ -16,7 +16,6 @@ export default function LetterGenerator() {
     const [step, setStep] = useState(0); 
     const [isLoading, setIsLoading] = useState(false);
     
-    // Strategic States
     const [strategyAnalysis, setStrategyAnalysis] = useState<StrategicAnalysis | null>(null);
     const [selectedPathId, setSelectedPathId] = useState<string | null>(null);
 
@@ -24,7 +23,6 @@ export default function LetterGenerator() {
     const [finalBody, setFinalBody] = useState('');
     const [objectiveText, setObjectiveText] = useState(objective || '');
     
-    // Chat Refinement States
     const [chatMessages, setChatMessages] = useState<{role: 'user'|'ai', text: string}[]>([]);
     const [userChatInput, setUserChatInput] = useState('');
     const chatEndRef = useRef<HTMLDivElement>(null);
@@ -39,7 +37,7 @@ export default function LetterGenerator() {
                 .then(setStrategyAnalysis)
                 .catch((e) => {
                     console.error(e);
-                    toast.error("فشل التحليل الاستراتيجي. يرجى مراجعة مفتاح الـ API.");
+                    toast.error("فشل التحليل الاستراتيجي التلقائي.");
                 })
                 .finally(() => setIsLoading(false));
         }
@@ -62,7 +60,7 @@ export default function LetterGenerator() {
             setGeneratedContent(result);
             setStep(1);
         } catch (e: any) { 
-            toast.error(e.message || "حدث خطأ أثناء الصياغة الذكية.");
+            toast.error(e.message || "فشلت الصياغة الذكية.");
         } finally { setIsLoading(false); }
     };
 
@@ -76,7 +74,7 @@ export default function LetterGenerator() {
             const context = `الموضوع: ${subject} | الهدف: ${objectiveText}`;
             const newBody = await refineLetterWithChat(finalBody, instruction, context);
             setFinalBody(newBody);
-            setChatMessages(prev => [...prev, {role: 'ai', text: 'تم التحديث بناءً على تعليماتك.'}]);
+            setChatMessages(prev => [...prev, {role: 'ai', text: 'تم تحديث النص بناءً على توجيهاتك.'}]);
         } catch (e) { toast.error("فشل التحديث بالحوار."); } finally { setIsLoading(false); }
     };
 
@@ -94,18 +92,17 @@ export default function LetterGenerator() {
                         {isReplyMode ? "مختبر المناورات الإدارية" : "مركز الإنشاء الذكي"}
                     </h2>
                     <p className="text-slate-400 font-bold mt-2">
-                        صياغة بروتوكولية مدعومة بالتحليل الاستراتيجي
+                        {isReplyMode ? "تحليل النوايا وبناء ردود استراتيجية محكمة" : "صياغة خطابات رسمية عالية الجودة"}
                     </p>
                 </div>
                 {step > 0 && (
-                    <button onClick={() => setStep(step - 1)} className="btn-3d-secondary px-5 py-2.5 flex items-center gap-2 text-xs font-black transition-all">
+                    <button onClick={() => setStep(step - 1)} className="btn-3d-secondary px-5 py-2.5 flex items-center gap-2 text-xs font-black">
                         <Undo2Icon className="w-4 h-4" /> العودة
                     </button>
                 )}
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-                {/* Side Panel */}
                 <div className="lg:col-span-4 space-y-6">
                     {isReplyMode && parentLetter && (
                         <div className="glass-card border-indigo-500/20 p-6 rounded-3xl space-y-4 shadow-2xl">
@@ -134,19 +131,21 @@ export default function LetterGenerator() {
                     )}
                 </div>
 
-                {/* Main Area */}
                 <div className="lg:col-span-8">
                     {step === 0 && (
                         <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
                             {isReplyMode && strategyAnalysis && (
                                 <div className="space-y-4">
-                                    <p className="text-sm font-black text-white flex items-center gap-2 px-2"><LightbulbIcon className="w-5 h-5 text-amber-400" /> اختر المسار الاستراتيجي:</p>
+                                    <div className="flex items-center gap-2 px-2">
+                                        <LightbulbIcon className="w-5 h-5 text-amber-400" />
+                                        <p className="text-sm font-black text-white">اختر مسار المناورة الإدارية:</p>
+                                    </div>
                                     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                                         {strategyAnalysis.paths.map((path) => (
                                             <button 
                                                 key={path.id}
                                                 onClick={() => { setSelectedPathId(path.id); setObjectiveText(path.suggestedObjective); }}
-                                                className={`p-5 rounded-[2.2rem] border text-right transition-all group flex flex-col justify-between min-h-[220px] shadow-2xl ${selectedPathId === path.id ? 'bg-indigo-600/20 border-indigo-500 ring-2 ring-indigo-500/20' : 'bg-slate-900/40 border-white/5 hover:border-indigo-500/30'}`}
+                                                className={`p-5 rounded-[2.2rem] border text-right transition-all group flex flex-col justify-between min-h-[200px] shadow-2xl ${selectedPathId === path.id ? 'bg-indigo-600/20 border-indigo-500 ring-2 ring-indigo-500/20' : 'bg-slate-900/40 border-white/5 hover:border-indigo-500/30'}`}
                                             >
                                                 <div>
                                                     <span className={`text-[10px] font-black uppercase mb-3 block ${selectedPathId === path.id ? 'text-indigo-400' : 'text-slate-500'}`}>{path.title}</span>
@@ -174,13 +173,15 @@ export default function LetterGenerator() {
                                 </div>
 
                                 <div className="space-y-4">
-                                    <label className="text-sm font-black text-white flex items-center gap-2"><MessageSquareIcon className="w-5 h-5 text-indigo-400" /> هدف الخطاب النهائي</label>
+                                    <label className="text-sm font-black text-white flex items-center gap-2">
+                                        <MessageSquareIcon className="w-5 h-5 text-indigo-400" /> هدف الخطاب النهائي
+                                    </label>
                                     <textarea 
                                         value={objectiveText} 
                                         onChange={e => setObjectiveText(e.target.value)}
                                         rows={5}
                                         className="w-full input-inset p-6 rounded-3xl text-base font-bold bg-slate-950/40 border-indigo-500/10 focus:border-indigo-500 shadow-inner outline-none transition-all"
-                                        placeholder="اكتب ما تريد قوله وسأقوم بصياغته استراتيجياً..."
+                                        placeholder="اكتب ما تريد قوله وسيقوم النظام بصياغته استراتيجياً..."
                                     />
                                 </div>
 
@@ -188,10 +189,10 @@ export default function LetterGenerator() {
                                     <button 
                                         onClick={handleGenerate} 
                                         disabled={isLoading || !objectiveText.trim()} 
-                                        className={`px-20 py-5 rounded-2xl font-black text-lg flex items-center gap-4 transition-all shadow-2xl active:scale-95 ${isLoading ? 'bg-slate-700 opacity-50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-indigo-600/30'}`}
+                                        className={`px-20 py-5 rounded-2xl font-black text-lg flex items-center gap-4 transition-all shadow-2xl active:scale-95 ${isLoading ? 'bg-slate-700 opacity-50 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-50 text-white shadow-indigo-600/30'}`}
                                     >
                                         {isLoading ? <div className="animate-spin h-5 w-5 border-2 border-white/20 border-b-white rounded-full"></div> : <SparklesIcon className="w-6 h-6" />}
-                                        <span>{isLoading ? 'جاري الصياغة...' : 'توليد المسودات الذكية'}</span>
+                                        <span>{isLoading ? 'جاري الصياغة الاستراتيجية...' : 'توليد المسودات الذكية'}</span>
                                     </button>
                                 </div>
                             </div>
@@ -215,7 +216,7 @@ export default function LetterGenerator() {
                                             {vKey === 'neutral' ? 'الصيغة المعيارية' : vKey === 'strict' ? 'الصيغة الحازمة' : 'الصيغة الدبلوماسية'}
                                         </div>
                                         <div className="p-6 flex-grow text-white text-[13px] leading-relaxed font-bold overflow-y-auto max-h-[380px] text-right prose prose-invert prose-sm custom-scrollbar" dangerouslySetInnerHTML={{ __html: sanitizeHTML(generatedContent.variations[vKey]) }} />
-                                        <div className="p-4"><button onClick={() => { setFinalBody(generatedContent.variations[vKey]); setStep(2); }} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-black text-xs text-white shadow-lg transition-all">اعتماد النسخة للتنقيح</button></div>
+                                        <div className="p-4"><button onClick={() => { setFinalBody(generatedContent.variations[vKey]); setStep(2); }} className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 rounded-xl font-black text-xs text-white shadow-lg transition-all">اعتماد هذه النسخة</button></div>
                                     </div>
                                 ))}
                              </div>
@@ -246,7 +247,7 @@ export default function LetterGenerator() {
                                         {chatMessages.length === 0 && (
                                             <div className="h-full flex flex-col items-center justify-center opacity-30 text-center px-4">
                                                 <BotIcon className="w-12 h-12 mb-4" />
-                                                <p className="text-xs font-bold leading-relaxed">اطلب مني إضافة فقرة أو تغيير نبرة معينة في النص المفتوح وسأقوم بذلك فوراً.</p>
+                                                <p className="text-xs font-bold leading-relaxed">اطلب مني إضافة فقرة أو تغيير نبرة معينة في النص المفتوح.</p>
                                             </div>
                                         )}
                                         {chatMessages.map((msg, i) => (
