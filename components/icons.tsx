@@ -125,6 +125,35 @@ export const ShieldCheckIcon = ({ className }: { className?: string }): React.Re
     </svg>
 );
 
+// @FIX: Added ShieldAlertIcon
+export const ShieldAlertIcon = ({ className }: { className?: string }): React.ReactNode => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+        <path d="M12 8v4" />
+        <path d="M12 16h.01" />
+    </svg>
+);
+
+// @FIX: Added TargetIcon
+export const TargetIcon = ({ className }: { className?: string }): React.ReactNode => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <circle cx="12" cy="12" r="10" />
+        <circle cx="12" cy="12" r="6" />
+        <circle cx="12" cy="12" r="2" />
+    </svg>
+);
+
+// @FIX: Added ScaleIcon
+export const ScaleIcon = ({ className }: { className?: string }): React.ReactNode => (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <path d="m16 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" />
+        <path d="m2 16 3-8 3 8c-.87.65-1.92 1-3 1s-2.13-.35-3-1Z" />
+        <path d="M7 21h10" />
+        <path d="M12 3v18" />
+        <path d="M3 7h18" />
+    </svg>
+);
+
 export const SendIcon = ({ className, title }: { className?: string; title?: string }): React.ReactNode => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
         {title && <title>{title}</title>}
@@ -297,7 +326,7 @@ export const ClipboardCheckIcon = ({ className }: { className?: string }): React
 
 export const BrainCircuitIcon = ({ className }: { className?: string }): React.ReactNode => (
     <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M12 2a4.5 4.5 0 0 0-4.5 4.5c0 1.43.91 2.68 2.2 3.32.32.16.55.45.6.8.06.38.01.78-.17 1.12-.27.53-.78.86-1.38.86H7.5a4.5 4.5 0 1 0 0 3h1.75c.6 0 1.11.33 1.38.86.18.34.23.74.17 1.12a1.23 1.23 0 0 1-.6.8c-1.29.64-2.2 1.9-2.2 3.32A4.5 4.5 0 0 0 12 22a4.5 4.5 0 0 0 4.5-4.5c0-1.43-.91-2.68-2.2-3.32a1.23 1.23 0 0 1-.6-.8c-.06-.38-.01-.78.17-1.12.27-.53.78.86 1.38.86h1.75a4.5 4.5 0 1 0 0-3H15.5c-.6 0-1.11-.33-1.38-.86a1.33 1.33 0 0 1-.17-1.12c.05-.35.28-.64.6-.8 1.29-.64 2.2-1.9 2.2-3.32A4.5 4.5 0 0 0 12 2Z" />
+      <path d="M12 2a4.5 4.5 0 0 0-4.5 4.5c0 1.43.91 2.68 2.2 3.32.32.16.55.45.6.8.06.38.01.78-.17 1.12-.27.53-.78.86-1.38.86H7.5a4.5 4.5 0 1 0 0 3h1.75c.6 0 1.11.33 1.38.86.18.34.23.74.17 1.12a1.23 1.23 0 0 1-.6.8c-1.29.64-2.2 1.9-2.2 3.32A4.5 4.5 0 0 0 12 22a4.5 4.5 0 0 0 4.5-4.5c0-1.43-.91-2.68-2.2-3.32a1.23 1.23 0 0 1-.68c-.06-.38-.01-.78.17-1.12.27-.53.78.86 1.38.86h1.75a4.5 4.5 0 1 0 0-3H15.5c-.6 0-1.11-.33-1.38-.86a1.33 1.33 0 0 1-.17-1.12c.05-.35.28-.64.6-.8 1.29-.64 2.2-1.9 2.2-3.32A4.5 4.5 0 0 0 12 2Z" />
       <path d="M15.5 15.25a2.5 2.5 0 0 1 0-4.5" />
       <path d="M8.5 15.25a2.5 2.5 0 0 0 0-4.5" />
     </svg>

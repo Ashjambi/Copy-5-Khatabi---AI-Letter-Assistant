@@ -56,6 +56,7 @@ interface AppState {
     fileSystemHandle: FileSystemDirectoryHandle | null;
 }
 
+// @FIX: Added missing AppAction types to fix TypeScript errors in components
 type AppAction =
   | { type: 'LOAD_STATE'; payload: Partial<AppState> }
   | { type: 'SET_VIEW'; payload: View }
@@ -72,7 +73,12 @@ type AppAction =
   | { type: 'RESET_INBOUND_FORM_STATE' }
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'UPDATE_CATEGORY_NAME', payload: { oldName: string, newName: string } }
-  | { type: 'ADD_COMMENT', payload: { letterId: string, text: string } };
+  | { type: 'ADD_COMMENT', payload: { letterId: string, text: string } }
+  | { type: 'CREATE_TEMPLATE'; payload: Omit<Template, 'id'> }
+  | { type: 'SELECT_TEMPLATE'; payload: Template }
+  | { type: 'DELETE_PRINCIPLE'; payload: string }
+  | { type: 'MARK_ALL_NOTIFICATIONS_READ' }
+  | { type: 'MARK_NOTIFICATION_READ'; payload: string };
 
 const initialGeneratorState: GeneratorState = {
     sender: '',
@@ -230,6 +236,33 @@ function appReducer(state: AppState, action: AppAction): AppState {
         };
         return { ...state, comments: [newComment, ...state.comments] };
     }
+    // @FIX: Implemented cases for newly added actions
+    case 'CREATE_TEMPLATE': {
+        const newTemplate: Template = {
+            ...action.payload,
+            id: `temp_${Date.now()}`
+        };
+        return { ...state, templates: [newTemplate, ...state.templates], currentView: View.TEMPLATES };
+    }
+    case 'SELECT_TEMPLATE': {
+        return {
+            ...state,
+            selectedTemplate: action.payload,
+            generatorState: {
+                ...state.generatorState,
+                objective: action.payload.objectiveTemplate,
+                tone: action.payload.tone,
+                letterType: action.payload.letterType
+            },
+            currentView: View.GENERATOR
+        };
+    }
+    case 'DELETE_PRINCIPLE':
+        return { ...state, learnedPrinciples: state.learnedPrinciples.filter(p => p.id !== action.payload) };
+    case 'MARK_ALL_NOTIFICATIONS_READ':
+        return { ...state, notifications: state.notifications.map(n => ({ ...n, read: true })) };
+    case 'MARK_NOTIFICATION_READ':
+        return { ...state, notifications: state.notifications.map(n => n.id === action.payload ? { ...n, read: true } : n) };
     default:
         return state;
   }
@@ -254,6 +287,7 @@ export default function App() {
                 <Sidebar />
                 <div className="flex-1 flex flex-col overflow-hidden relative z-10">
                     <Header onNotificationClick={(n) => {
+                        dispatch({ type: 'MARK_NOTIFICATION_READ', payload: n.id });
                         dispatch({ type: 'SELECT_LETTER', payload: n.letterId || '' });
                     }} />
                     <main className="flex-1 p-6 overflow-y-auto custom-scrollbar h-full">
