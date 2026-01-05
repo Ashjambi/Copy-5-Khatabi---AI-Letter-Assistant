@@ -25,7 +25,7 @@ export async function onRequestPost(context: any) {
 
     if (task === 'analyze_strategy') {
         systemInstruction += " حلل الخطاب وحدد النوايا وميزان القوة و3 مسارات للرد واستخلص المخاطر الإدارية.";
-        prompt = `حلل الخطاب التالي استراتيجياً:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
+        prompt = `حلل الخطاب التالي استراتيجياً واستخلص (النوايا، ميزان القوة، المخاطر، المسارات):\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
         responseSchema = {
             type: Type.OBJECT,
             properties: {
@@ -112,7 +112,7 @@ export async function onRequestPost(context: any) {
     } else if (task === 'refine_chat') {
         const { currentBody, userInstruction, context: chatContext } = payload;
         systemInstruction += " عدل النص بناءً على توجيهات المستخدم وأعده بصيغة HTML.";
-        prompt = `النص: ${currentBody}\nالتوجيه: ${userInstruction}\nالسياق: ${chatContext}`;
+        prompt = `النص الحالي: ${currentBody}\nتعليمات التعديل: ${userInstruction}\nالسياق: ${chatContext}`;
         
         const resp = await ai.models.generateContent({
             model: modelName,
@@ -120,18 +120,6 @@ export async function onRequestPost(context: any) {
             config: { systemInstruction }
         });
         return new Response(JSON.stringify({ text: resp.text }), { headers: { "Content-Type": "application/json" } });
-    } else if (task === 'follow_up') {
-        prompt = `من هذه القائمة، ما المعاملات المعلقة؟ ${JSON.stringify(payload)}`;
-        responseSchema = {
-            type: Type.ARRAY,
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    letterId: { type: Type.STRING },
-                    summary: { type: Type.STRING }
-                }
-            }
-        };
     }
 
     const response = await ai.models.generateContent({
@@ -152,7 +140,7 @@ export async function onRequestPost(context: any) {
     
     return new Response(JSON.stringify({ 
         error: isRateLimit 
-            ? "النظام مزدحم حالياً. يرجى المحاولة بعد ثوانٍ." 
+            ? "النظام مزدحم حالياً (تجاوز حد الطلبات المتزامنة). يرجى الانتظار ثوانٍ والمحاولة مرة أخرى." 
             : errorMsg 
     }), { 
         status: isRateLimit ? 429 : 500,

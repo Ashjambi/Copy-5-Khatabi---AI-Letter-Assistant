@@ -2,10 +2,9 @@
 import { Letter, ExtractedLetterDetails, EnhancementSuggestion, FollowUpItem, SmartReply, LetterVariations, StrategicAnalysis } from "../types";
 
 /**
- * وظيفة موحدة لإرسال الطلبات للسيرفر (Proxy)
- * تضمن بقاء مفتاح API آمناً في السيرفر وعدم تعطل المتصفح
+ * وظيفة موحدة للتواصل مع الذكاء الاصطناعي عبر السيرفر
  */
-async function callProxy(endpoint: string, data: any) {
+async function callAiProxy(endpoint: string, data: any) {
     const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -14,18 +13,17 @@ async function callProxy(endpoint: string, data: any) {
 
     if (!response.ok) {
         const error = await response.json();
-        // معالجة خطأ الكوتا أو الضغط على السيرفر
         if (response.status === 429) {
-            throw new Error("النظام مشغول حالياً، يرجى المحاولة بعد قليل.");
+            throw new Error("النظام مزدحم حالياً (تجاوز حد الطلبات المتزامنة). يرجى الانتظار ثوانٍ والمحاولة مرة أخرى.");
         }
-        throw new Error(error.error || "حدث خطأ أثناء الاتصال بمحرك الذكاء الاصطناعي");
+        throw new Error(error.error || "حدث خطأ في الاتصال بالذكاء الاصطناعي");
     }
 
     return await response.json();
 }
 
 /**
- * المسح الضوئي (OCR) - مفصول عن بقية الخدمات
+ * المسح الضوئي (OCR) عبر السيرفر
  */
 export async function extractDetailsFromLetterImage(
     base64Data: string,
@@ -41,14 +39,14 @@ export async function extractDetailsFromLetterImage(
         `ID: ${l.id}, Sub: ${l.subject}`
     ).join(' | ');
 
-    return await callProxy('/api/ocr', { base64Data, mimeType, lettersContext });
+    return await callAiProxy('/api/ocr', { base64Data, mimeType, lettersContext });
 }
 
 /**
- * تحليل المسارات والنوايا الاستراتيجية
+ * تحليل المسارات والنوايا الاستراتيجية (كشف النوايا)
  */
 export async function analyzeStrategicPaths(letter: Letter): Promise<StrategicAnalysis> {
-    return await callProxy('/api/ai', {
+    return await callAiProxy('/api/ai', {
         task: 'analyze_strategy',
         payload: {
             subject: letter.subject,
@@ -58,7 +56,20 @@ export async function analyzeStrategicPaths(letter: Letter): Promise<StrategicAn
 }
 
 /**
- * توليد مسودات الخطابات
+ * تلخيص الخطاب (الموجز التنفيذي)
+ */
+export async function analyzeLetterBrief(letter: Letter): Promise<{ summary: string, keyPoints: string[] }> {
+    return await callAiProxy('/api/ai', {
+        task: 'analyze_brief',
+        payload: {
+            subject: letter.subject,
+            body: letter.body.replace(/<[^>]*>?/gm, ' ')
+        }
+    });
+}
+
+/**
+ * توليد مسودات الخطابات (التوليد الذكي)
  */
 export async function generateLetterVariations(params: {
     isReply: boolean,
@@ -69,27 +80,14 @@ export async function generateLetterVariations(params: {
     subject: string,
     principles: string
 }): Promise<{ variations: LetterVariations, analysis: { strategic_feedback: string[] } }> {
-    return await callProxy('/api/ai', { task: 'generate_variations', payload: params });
-}
-
-/**
- * تلخيص الخطاب (الموجز)
- */
-export async function analyzeLetterBrief(letter: Letter): Promise<{ summary: string, keyPoints: string[] }> {
-    return await callProxy('/api/ai', {
-        task: 'analyze_brief',
-        payload: {
-            subject: letter.subject,
-            body: letter.body.replace(/<[^>]*>?/gm, ' ')
-        }
-    });
+    return await callAiProxy('/api/ai', { task: 'generate_variations', payload: params });
 }
 
 /**
  * اقتراح مسارات الرد السريع
  */
 export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]> {
-    return await callProxy('/api/ai', {
+    return await callAiProxy('/api/ai', {
         task: 'smart_replies',
         payload: {
             subject: letter.subject,
@@ -102,7 +100,7 @@ export async function generateSmartReplies(letter: Letter): Promise<SmartReply[]
  * تنقيح النص عبر الحوار
  */
 export async function refineLetterWithChat(currentBody: string, userInstruction: string, context: string): Promise<string> {
-    const result = await callProxy('/api/ai', {
+    const result = await callAiProxy('/api/ai', {
         task: 'refine_chat',
         payload: { currentBody, userInstruction, context }
     });
@@ -110,33 +108,33 @@ export async function refineLetterWithChat(currentBody: string, userInstruction:
 }
 
 /**
- * تحسين جودة الصياغة
+ * تحسين جودة الصياغة (التدقيق)
  */
 export async function enhanceLetter(text: string): Promise<EnhancementSuggestion[]> {
-    return await callProxy('/api/ai', { task: 'enhance_letter', payload: text });
+    return await callAiProxy('/api/ai', { task: 'enhance_letter', payload: text });
 }
 
 /**
- * مساعد المتابعة
+ * مساعد المتابعة الآلي
  */
 export async function getFollowUpSummary(letters: Letter[]): Promise<FollowUpItem[]> {
     const list = letters.map(l => ({ id: l.id, subject: l.subject }));
-    return await callProxy('/api/ai', { task: 'follow_up', payload: list });
+    return await callAiProxy('/api/ai', { task: 'follow_up', payload: list });
 }
 
 /**
- * البحث الذكي
+ * البحث السياقي الذكي
  */
 export async function searchLettersSmartly(query: string, letters: Letter[]): Promise<any[]> {
     const list = letters.map(l => ({ id: l.id, subject: l.subject }));
-    return await callProxy('/api/ai', { task: 'smart_search', payload: { query, list } });
+    return await callAiProxy('/api/ai', { task: 'smart_search', payload: { query, list } });
 }
 
 /**
- * تلخيص السلسلة
+ * تلخيص سلسلة مراسلات
  */
 export async function summarizeCorrespondenceThread(thread: Letter[]): Promise<string> {
     const text = thread.map(l => `${l.date}: ${l.subject}`).join(' -> ');
-    const result = await callProxy('/api/ai', { task: 'summarize_thread', payload: text });
+    const result = await callAiProxy('/api/ai', { task: 'summarize_thread', payload: text });
     return result.text || "";
 }
