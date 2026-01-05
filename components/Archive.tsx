@@ -53,7 +53,6 @@ export default function Archive(): React.ReactNode {
       setIsAiSearching(true);
       setAiResults(null);
       try {
-          // الذكاء الاصطناعي يبحث في الموضوع، الرقم، والمتن
           const results = await searchLettersSmartly(searchQuery, visibleLetters);
           setAiResults(results);
           if (results.length === 0) {
@@ -69,7 +68,6 @@ export default function Archive(): React.ReactNode {
   };
 
   const filteredLetters = useMemo(() => {
-    // إذا كانت هناك نتائج AI، فهي التي تحدد القائمة الأساسية
     let baseSet = visibleLetters;
     if (aiResults) {
         const matchingIds = new Set(aiResults.map(r => r.letterId));
@@ -77,7 +75,6 @@ export default function Archive(): React.ReactNode {
     }
 
     return baseSet.filter(letter => {
-      // البحث النصي المحلي (كخلفية إذا لم يتم استخدام AI Search)
       if (!aiResults && searchQuery.trim()) {
           const q = searchQuery.toLowerCase().trim();
           const inSubject = letter.subject.toLowerCase().includes(q);
@@ -116,20 +113,20 @@ export default function Archive(): React.ReactNode {
 
   return (
     <div className="flex h-[calc(100vh-6rem)] overflow-hidden gap-6">
-      <div className={`flex-1 flex flex-col h-full space-y-4 transition-all duration-500 ${previewId ? 'w-2/3' : 'w-full'}`}>
+      <div className={`flex-1 flex flex-col h-full space-y-4 transition-all duration-700 ${previewId ? 'w-2/3' : 'w-full'}`}>
           
-          <div className="glass-card p-5 flex flex-col gap-4 rounded-3xl shrink-0 border border-white/10 shadow-2xl relative overflow-hidden">
+          <div className="glass-card p-5 flex flex-col gap-4 rounded-[2.5rem] shrink-0 border border-white/10 shadow-2xl relative overflow-hidden">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500/20 via-indigo-500/50 to-indigo-500/20"></div>
               
               <div className="flex flex-col md:flex-row items-center gap-4">
                   <div className="relative flex-1 w-full group">
-                      <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-slate-500 group-focus-within:text-indigo-400">
+                      <div className="absolute inset-y-0 right-0 flex items-center pr-4 pointer-events-none text-slate-500 group-focus-within:text-indigo-400 transition-colors duration-300">
                           <SearchIcon className="w-5 h-5" />
                       </div>
                       <input
                           type="text"
-                          className="block w-full py-4 pr-12 pl-4 text-base text-white bg-slate-950/40 border border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-bold placeholder-slate-500 transition-all shadow-inner"
-                          placeholder="ابحث بموضوع، رقم، أو سياق معنوي (مثال: معاملات الميزانية)..."
+                          className="block w-full py-4 pr-12 pl-4 text-base text-white bg-slate-950/40 border border-white/5 rounded-2xl focus:ring-2 focus:ring-indigo-500 focus:border-transparent font-bold placeholder-slate-500 transition-all duration-300 shadow-inner"
+                          placeholder="ابحث بموضوع، رقم، أو سياق معنوي..."
                           value={searchQuery}
                           onChange={(e) => {
                               setSearchTerm(e.target.value);
@@ -139,38 +136,41 @@ export default function Archive(): React.ReactNode {
                       />
                   </div>
                   
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex items-center gap-3 shrink-0">
                         <button
                           onClick={handleAiSearch}
                           disabled={isAiSearching || !searchQuery.trim()}
-                          className={`group relative flex items-center gap-2 px-6 py-4 rounded-2xl transition-all border font-black text-sm shadow-xl hover:scale-[1.02] active:scale-95 disabled:opacity-50 ${isAiSearching ? 'bg-slate-700 border-white/10' : 'bg-indigo-600 hover:bg-indigo-500 border-indigo-400 text-white'}`}
+                          className={`group relative flex items-center gap-2 px-6 py-4 rounded-2xl transition-all duration-300 border font-black text-sm shadow-xl hover:scale-105 active:scale-95 disabled:opacity-50 ${isAiSearching ? 'bg-slate-700 border-white/10' : 'bg-indigo-600 hover:bg-indigo-500 border-indigo-400 text-white shadow-indigo-600/20'}`}
                         >
                             {isAiSearching ? (
                                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                             ) : (
                                 <SparklesIcon className="w-5 h-5" />
                             )}
-                            <span>{isAiSearching ? 'جاري التحليل...' : 'بحث ذكي (AI)'}</span>
+                            <span>{isAiSearching ? 'جاري التحليل...' : 'بحث ذكي'}</span>
                         </button>
 
                         <button
                           onClick={() => setShowFilters(!showFilters)}
-                          className={`p-4 rounded-2xl transition-all border ${showFilters ? 'bg-indigo-900/40 text-indigo-400 border-indigo-500/50' : 'bg-slate-900/60 text-slate-400 border-white/5 hover:text-white'}`}
-                          title="فلاتر عميقة"
+                          className={`relative p-4 rounded-2xl transition-all duration-300 border hover:scale-105 active:scale-95 ${showFilters ? 'bg-indigo-600 text-white border-indigo-400 shadow-lg shadow-indigo-600/20' : 'bg-slate-900/60 text-slate-400 border-white/5 hover:text-white hover:bg-slate-800'}`}
+                          title="فلاتر البحث"
                         >
-                          <FilterIcon className="w-5 h-5" />
+                          <FilterIcon className={`w-5 h-5 transition-transform duration-500 ${showFilters ? 'rotate-180 scale-110' : ''}`} />
+                          {showFilters && (
+                              <span className="absolute -top-1 -left-1 w-3 h-3 bg-rose-500 rounded-full border-2 border-slate-900 animate-pulse"></span>
+                          )}
                         </button>
 
                         <div className="flex bg-slate-950/50 rounded-2xl p-1 border border-white/5">
                             <button
                                 onClick={() => setViewMode('grid')}
-                                className={`p-3 rounded-xl transition-all ${viewMode === 'grid' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                className={`p-3 rounded-xl transition-all duration-300 ${viewMode === 'grid' ? 'bg-white/10 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                             >
                                 <LayoutTemplateIcon className="w-5 h-5" />
                             </button>
                             <button
                                 onClick={() => setViewMode('list')}
-                                className={`p-3 rounded-xl transition-all ${viewMode === 'list' ? 'bg-white/10 text-white' : 'text-slate-500 hover:text-slate-300'}`}
+                                className={`p-3 rounded-xl transition-all duration-300 ${viewMode === 'list' ? 'bg-white/10 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
                             >
                                 <ListIcon className="w-5 h-5" />
                             </button>
@@ -179,10 +179,10 @@ export default function Archive(): React.ReactNode {
               </div>
 
               {showFilters && (
-                  <div className="bg-slate-950/60 p-6 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 animate-in slide-in-from-top-4 duration-300 shadow-2xl">
+                  <div className="bg-slate-950/60 p-6 rounded-2xl border border-white/5 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-6 animate-in slide-in-from-top-4 fade-in duration-500 shadow-2xl">
                       <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">النوع</label>
-                          <select value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})} className="w-full bg-slate-900 border border-white/10 p-3 rounded-xl text-sm text-white font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                          <select value={filters.type} onChange={e => setFilters({...filters, type: e.target.value})} className="w-full bg-slate-900 border border-white/10 p-3 rounded-xl text-sm text-white font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                               <option value="all">الكل</option>
                               <option value="inbound">وارد</option>
                               <option value="outbound">صادر</option>
@@ -190,24 +190,24 @@ export default function Archive(): React.ReactNode {
                       </div>
                       <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">الأهمية</label>
-                          <select value={filters.priority} onChange={e => setFilters({...filters, priority: e.target.value})} className="w-full bg-slate-900 border border-white/10 p-3 rounded-xl text-sm text-white font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                          <select value={filters.priority} onChange={e => setFilters({...filters, priority: e.target.value})} className="w-full bg-slate-900 border border-white/10 p-3 rounded-xl text-sm text-white font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                               <option value="all">الكل</option>
                               {Object.values(PriorityLevel).map(p => <option key={p} value={p}>{p}</option>)}
                           </select>
                       </div>
                       <div className="space-y-2">
                           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">السرية</label>
-                          <select value={filters.confidentiality} onChange={e => setFilters({...filters, confidentiality: e.target.value})} className="w-full bg-slate-900 border border-white/10 p-3 rounded-xl text-sm text-white font-bold focus:ring-2 focus:ring-indigo-500 outline-none">
+                          <select value={filters.confidentiality} onChange={e => setFilters({...filters, confidentiality: e.target.value})} className="w-full bg-slate-900 border border-white/10 p-3 rounded-xl text-sm text-white font-bold focus:ring-2 focus:ring-indigo-500 outline-none transition-all">
                               <option value="all">الكل</option>
                               {Object.values(ConfidentialityLevel).map(c => <option key={c} value={c}>{c}</option>)}
                           </select>
                       </div>
                       <div className="space-y-2 lg:col-span-1">
                           <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-1">من تاريخ</label>
-                          <input type="date" value={filters.startDate} onChange={e => setFilters({...filters, startDate: e.target.value})} className="w-full bg-slate-900 border border-white/10 p-3 rounded-xl text-sm text-white font-bold outline-none focus:ring-2 focus:ring-indigo-500" />
+                          <input type="date" value={filters.startDate} onChange={e => setFilters({...filters, startDate: e.target.value})} className="w-full bg-slate-900 border border-white/10 p-3 rounded-xl text-sm text-white font-bold outline-none focus:ring-2 focus:ring-indigo-500 transition-all" />
                       </div>
                       <div className="flex items-end">
-                          <button onClick={handleResetFilters} className="w-full py-3.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-xs font-black transition-all">
+                          <button onClick={handleResetFilters} className="w-full py-3.5 bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 rounded-xl text-xs font-black transition-all active:scale-95">
                               إعادة تعيين البحث
                           </button>
                       </div>
@@ -218,23 +218,23 @@ export default function Archive(): React.ReactNode {
           <div className="flex-1 overflow-y-auto custom-scrollbar p-1">
               <div className="flex items-center justify-between px-2 mb-4">
                   <div className="flex items-center gap-3">
-                    <p className="text-sm font-bold text-slate-400">
+                    <p className="text-sm font-bold text-slate-400 animate-in fade-in duration-700">
                         {aiResults ? 'نتائج البحث السياقي:' : 'نتائج البحث:'} <span className="text-white font-black">{filteredLetters.length}</span>
                     </p>
                     {aiResults && (
-                        <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-black px-3 py-1 rounded-full border border-indigo-500/30 flex items-center gap-2 animate-in fade-in slide-in-from-right-2">
+                        <span className="bg-indigo-500/20 text-indigo-300 text-[10px] font-black px-3 py-1 rounded-full border border-indigo-500/30 flex items-center gap-2 animate-in fade-in slide-in-from-right-2 duration-500">
                             <BotIcon className="w-4 h-4" />
-                            تطابق ذكي
+                            تطابق ذكي مفعّل
                         </span>
                     )}
                   </div>
               </div>
 
               {filteredLetters.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-80 text-slate-500 bg-slate-900/20 rounded-[3rem] border border-dashed border-white/5 animate-in fade-in duration-700">
+                  <div className="flex flex-col items-center justify-center h-80 text-slate-500 bg-slate-900/20 rounded-[3rem] border border-dashed border-white/5 animate-in fade-in duration-1000">
                       <SearchIcon className="w-16 h-16 opacity-10 mb-6" />
                       <p className="font-black text-xl">لا توجد معاملات مطابقة</p>
-                      <p className="text-sm mt-2 text-slate-600">جرب استخدام "البحث الذكي" للعثور على المحتوى بالمعنى</p>
+                      <p className="text-sm mt-2 text-slate-600 font-bold">جرب استخدام "البحث الذكي" للعثور على المحتوى بالمعنى</p>
                   </div>
               ) : viewMode === 'list' ? (
                   <div className="space-y-3">
@@ -244,11 +244,11 @@ export default function Archive(): React.ReactNode {
                           return (
                             <div 
                                 key={letter.id}
-                                className={`group flex flex-col gap-3 p-5 rounded-3xl border transition-all duration-300 cursor-pointer ${isSelected ? 'bg-indigo-900/30 border-indigo-500/50 shadow-[0_0_30px_rgba(99,102,241,0.15)]' : 'bg-slate-900/40 border-white/5 hover:border-white/20 hover:bg-slate-800/60'}`}
+                                className={`group flex flex-col gap-3 p-5 rounded-[2rem] border transition-all duration-500 cursor-pointer ${isSelected ? 'bg-indigo-900/30 border-indigo-500/50 shadow-[0_0_40px_rgba(99,102,241,0.15)] scale-[1.01]' : 'bg-slate-900/40 border-white/5 hover:border-white/20 hover:bg-slate-800/60'}`}
                                 onClick={() => setPreviewId(isSelected ? null : letter.id)}
                             >
                                 <div className="flex items-center gap-5">
-                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border transition-colors ${letter.correspondenceType === CorrespondenceType.OUTBOUND ? 'bg-indigo-500/10 text-indigo-400' : 'bg-fuchsia-500/10 text-fuchsia-400'}`}>
+                                    <div className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border transition-all duration-500 ${letter.correspondenceType === CorrespondenceType.OUTBOUND ? 'bg-indigo-500/10 text-indigo-400 group-hover:bg-indigo-500 group-hover:text-white' : 'bg-fuchsia-500/10 text-fuchsia-400 group-hover:bg-fuchsia-500 group-hover:text-white'}`}>
                                         {letter.correspondenceType === CorrespondenceType.OUTBOUND ? <SendIcon className="w-6 h-6" /> : <InboxInIcon className="w-6 h-6" />}
                                     </div>
                                     <div className="flex-1 min-w-0">
@@ -260,7 +260,7 @@ export default function Archive(): React.ReactNode {
                                                 {letter.date}
                                             </span>
                                         </div>
-                                        <p className="text-base font-black text-white truncate leading-tight">{letter.subject}</p>
+                                        <p className="text-base font-black text-white truncate leading-tight group-hover:text-indigo-300 transition-colors duration-300">{letter.subject}</p>
                                         <div className="flex items-center gap-3 mt-2">
                                             <span className="text-xs text-slate-400 font-bold truncate">من: {letter.from}</span>
                                             <span className="text-slate-700">→</span>
@@ -277,7 +277,7 @@ export default function Archive(): React.ReactNode {
                                 </div>
 
                                 {aiResult && (
-                                    <div className="mt-2 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-2xl flex gap-4 animate-in fade-in zoom-in-95 duration-500 group-hover:bg-indigo-500/15">
+                                    <div className="mt-2 bg-indigo-500/10 border border-indigo-500/20 p-4 rounded-2xl flex gap-4 animate-in fade-in zoom-in-95 duration-700 group-hover:bg-indigo-500/15">
                                         <BotIcon className="w-5 h-5 text-indigo-400 shrink-0 mt-0.5" />
                                         <div className="flex-1">
                                             <p className="text-xs text-indigo-100 font-bold leading-relaxed">
@@ -285,7 +285,7 @@ export default function Archive(): React.ReactNode {
                                                 "{aiResult.relevanceReason}"
                                             </p>
                                             <div className="w-full bg-slate-800 h-1.5 mt-3 rounded-full overflow-hidden">
-                                                <div className="bg-indigo-500 h-full shadow-[0_0_8px_rgba(99,102,241,1)] transition-all duration-1000" style={{ width: `${aiResult.confidenceScore * 100}%` }}></div>
+                                                <div className="bg-indigo-500 h-full shadow-[0_0_12px_rgba(99,102,241,1)] transition-all duration-1000" style={{ width: `${aiResult.confidenceScore * 100}%` }}></div>
                                             </div>
                                         </div>
                                     </div>
@@ -303,7 +303,7 @@ export default function Archive(): React.ReactNode {
                             <div 
                                 key={letter.id} 
                                 onClick={() => setPreviewId(isSelected ? null : letter.id)}
-                                className={`relative p-6 rounded-[2.5rem] border transition-all cursor-pointer group overflow-hidden ${isSelected ? 'bg-indigo-900/30 border-indigo-500/50 shadow-2xl scale-[1.02]' : 'bg-slate-900/40 border-white/5 hover:border-indigo-500/30'}`}
+                                className={`relative p-6 rounded-[2.5rem] border transition-all duration-500 cursor-pointer group overflow-hidden ${isSelected ? 'bg-indigo-900/30 border-indigo-500/50 shadow-2xl scale-[1.03]' : 'bg-slate-900/40 border-white/5 hover:border-indigo-500/30 hover:-translate-y-1'}`}
                             >
                                 <div className="flex justify-between items-start mb-4">
                                     <span className={`text-[10px] font-black px-3 py-1 rounded-full ${letter.correspondenceType === CorrespondenceType.OUTBOUND ? 'bg-indigo-500/10 text-indigo-400' : 'bg-fuchsia-500/10 text-fuchsia-400'}`}>
@@ -311,10 +311,10 @@ export default function Archive(): React.ReactNode {
                                     </span>
                                     {getStatusChip(letter.status)}
                                 </div>
-                                <h3 className="text-lg font-black text-white mb-3 line-clamp-2 leading-relaxed h-14">{letter.subject}</h3>
+                                <h3 className="text-lg font-black text-white mb-3 line-clamp-2 leading-relaxed h-14 group-hover:text-indigo-300 transition-colors">{letter.subject}</h3>
                                 
                                 {aiResult ? (
-                                    <div className="mb-4 bg-indigo-500/20 p-3 rounded-2xl text-[10px] text-indigo-100 font-bold border border-indigo-500/30 leading-relaxed">
+                                    <div className="mb-4 bg-indigo-500/20 p-3 rounded-2xl text-[10px] text-indigo-100 font-bold border border-indigo-500/30 leading-relaxed shadow-inner">
                                         🤖 {aiResult.relevanceReason.substring(0, 80)}...
                                     </div>
                                 ) : (
@@ -337,10 +337,10 @@ export default function Archive(): React.ReactNode {
       </div>
 
       {previewId && previewLetter && (
-          <div className="w-1/3 bg-[#020617] border-r border-white/10 shadow-[0_0_50px_rgba(0,0,0,0.5)] flex flex-col h-full animate-in slide-in-from-left-20 duration-500 z-20 rounded-l-[3rem] overflow-hidden shrink-0 border-l border-indigo-500/20">
+          <div className="w-1/3 bg-[#020617] border-r border-white/10 shadow-[0_0_60px_rgba(0,0,0,0.6)] flex flex-col h-full animate-in slide-in-from-left-20 duration-500 z-20 rounded-l-[3rem] overflow-hidden shrink-0 border-l border-indigo-500/20">
               <div className="p-6 border-b border-white/10 flex justify-between items-center bg-slate-950/40">
                   <h3 className="font-black text-xl text-white">معاينة فورية</h3>
-                  <button onClick={() => setPreviewId(null)} className="text-slate-500 hover:text-white p-2 hover:bg-white/5 rounded-full transition-all">
+                  <button onClick={() => setPreviewId(null)} className="text-slate-500 hover:text-white p-2 hover:bg-white/5 rounded-full transition-all duration-300 active:scale-90">
                       <XCircleIcon className="w-8 h-8" />
                   </button>
               </div>
@@ -383,7 +383,7 @@ export default function Archive(): React.ReactNode {
                       <div className="sticky bottom-0 pt-6 pb-2 mt-auto bg-gradient-to-t from-slate-900 to-transparent">
                           <button 
                               onClick={() => dispatch({ type: 'SELECT_LETTER', payload: previewLetter.id })}
-                              className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-3xl font-black text-lg shadow-[0_10px_30px_rgba(99,102,241,0.4)] transition-all flex items-center justify-center gap-3 hover:-translate-y-1 active:translate-y-0"
+                              className="w-full py-5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-3xl font-black text-lg shadow-[0_10px_40px_rgba(99,102,241,0.4)] transition-all flex items-center justify-center gap-3 hover:-translate-y-1 active:translate-y-0 active:scale-95"
                           >
                               <EyeIcon className="w-6 h-6" />
                               فتح المعاملة لإتخاذ إجراء

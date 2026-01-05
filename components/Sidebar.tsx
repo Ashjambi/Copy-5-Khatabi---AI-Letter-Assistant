@@ -9,7 +9,6 @@ interface SidebarProps {
   className?: string;
 }
 
-// Inline icons for toggle to ensure specific look without editing icons.tsx
 const ChevronRightIcon = ({ className }: { className?: string }) => (
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={className}>
     <path d="m9 18 6-6-6-6"/>
@@ -46,43 +45,40 @@ export default function Sidebar({ className }: SidebarProps): React.ReactNode {
   }> = ({ view, currentView, text, isPrimary = false, isSpecial = false, compareViews }) => {
     const isActive = currentView === view || (compareViews && compareViews.includes(currentView));
     
-    // Base container class
     let containerClass = `
-        group flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-200 cursor-pointer
+        group relative flex items-center gap-3 px-3 py-3 rounded-xl transition-all duration-300 cursor-pointer
         ${isSidebarCollapsed ? 'justify-center w-12 h-12 mx-auto' : 'w-full'}
     `;
 
-    // Active State Styling
     if (isActive) {
       if (isPrimary) {
-        containerClass += ` btn-3d ${theme.bg} text-white shadow-lg`;
+        containerClass += ` btn-3d ${theme.bg} text-white shadow-lg scale-[1.02]`;
       } else if (isSpecial) {
-        containerClass += ` bg-violet-600 text-white shadow-lg btn-3d`;
+        containerClass += ` bg-violet-600 text-white shadow-lg btn-3d scale-[1.02]`;
       } else {
         containerClass += ` bg-white/10 text-white border border-white/10`;
       }
     } else {
-        // Inactive State Styling - Brightened to text-slate-300 for better visibility
-       containerClass += ' text-slate-300 hover:text-white hover:bg-white/5';
+       containerClass += ' text-slate-300 hover:text-white hover:bg-white/5 hover:translate-x-[-4px]';
     }
 
     return (
       <button onClick={() => setCurrentView(view)} className={containerClass} title={isSidebarCollapsed ? text : ''}>
         {!isSidebarCollapsed && (
-            <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-opacity duration-200 ${isActive ? 'text-white' : ''}`}>
+            <span className={`font-bold text-sm whitespace-nowrap overflow-hidden transition-all duration-300 ${isActive ? 'text-white' : ''}`}>
                 {text}
             </span>
         )}
         {isSidebarCollapsed && (
-             <span className={`font-bold text-xs whitespace-nowrap overflow-hidden transition-opacity duration-200 ${isActive ? 'text-white' : ''}`}>
+             <span className={`font-bold text-xs whitespace-nowrap overflow-hidden transition-all duration-300 ${isActive ? 'text-white scale-110' : ''}`}>
                 {text.charAt(0)}
             </span>
         )}
         
-        {/* Tooltip for collapsed mode */}
         {isSidebarCollapsed && (
-            <div className="absolute right-14 bg-slate-900 text-white text-xs font-bold px-3 py-1.5 rounded-md opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-white/10 shadow-xl">
+            <div className="absolute right-16 bg-slate-900 text-white text-xs font-black px-3 py-2 rounded-xl opacity-0 group-hover:opacity-100 transition-all duration-300 pointer-events-none whitespace-nowrap z-50 border border-white/10 shadow-2xl translate-x-4 group-hover:translate-x-0">
                 {text}
+                <div className="absolute top-1/2 -left-1 -translate-y-1/2 w-2 h-2 bg-slate-900 border-b border-l border-white/10 rotate-45"></div>
             </div>
         )}
       </button>
@@ -92,24 +88,23 @@ export default function Sidebar({ className }: SidebarProps): React.ReactNode {
 
   return (
     <aside className={`
-        flex flex-col h-[calc(100vh-2rem)] m-4 rounded-3xl border border-white/5 shadow-2xl overflow-hidden glass-card transition-all duration-300 ease-in-out
+        flex flex-col h-[calc(100vh-2rem)] m-4 rounded-3xl border border-white/5 shadow-2xl overflow-hidden glass-card transition-all duration-500 ease-in-out
         ${isSidebarCollapsed ? 'w-24' : 'w-72'} 
         ${className}
     `}>
-      {/* Brand Header */}
-      <div className={`p-4 border-b border-white/5 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} transition-all`}>
+      <div className={`p-4 border-b border-white/5 flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-3'} transition-all duration-500`}>
         <div 
             onClick={toggleSidebar}
-            className="cursor-pointer relative w-10 h-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-[0_0_15px_rgba(99,102,241,0.5)] hover:scale-105 transition-transform"
+            className="cursor-pointer relative w-10 h-10 flex items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-violet-600 shadow-[0_0_15px_rgba(99,102,241,0.4)] hover:scale-110 active:scale-95 transition-all duration-300"
         >
              {settings.companyLogo ? (
                  <img src={settings.companyLogo} alt="Logo" className="w-6 h-6 object-contain" />
              ) : (
-                 <span className="text-white font-bold text-lg">خ</span>
+                 <span className="text-white font-black text-lg">خ</span>
              )}
         </div>
         {!isSidebarCollapsed && (
-            <div className="flex-1 min-w-0 overflow-hidden">
+            <div className="flex-1 min-w-0 overflow-hidden animate-in fade-in slide-in-from-right-2 duration-500">
                 <h1 className="text-lg font-black text-white tracking-wide truncate leading-tight">
                   {settings.companyName}
                 </h1>
@@ -118,48 +113,45 @@ export default function Sidebar({ className }: SidebarProps): React.ReactNode {
         )}
       </div>
 
-      {/* Navigation */}
       <nav className="p-3 space-y-1.5 flex-1 overflow-y-auto custom-scrollbar flex flex-col">
-        {!isSidebarCollapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2 mb-1">الرئيسية</p>}
+        {!isSidebarCollapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2 mb-1 animate-in fade-in duration-700">الرئيسية</p>}
         <NavButton view={View.DASHBOARD} currentView={currentView} text="الرئيسية" />
         <NavButton view={View.CORRESPONDENCE} currentView={currentView} text="المراسلات" />
         
-        <div className={`my-4 border-t border-white/5 mx-2 ${isSidebarCollapsed ? 'border-transparent' : ''}`}></div>
+        <div className={`my-4 border-t border-white/5 mx-2 transition-opacity duration-500 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}></div>
         
-        {!isSidebarCollapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">إجراءات</p>}
+        {!isSidebarCollapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1 animate-in fade-in duration-700">إجراءات</p>}
         <NavButton view={View.GENERATOR} currentView={currentView} text="إنشاء خطاب" isPrimary />
         <NavButton view={View.INBOUND_FORM} currentView={currentView} text="تسجيل وارد" isSpecial />
         
-        <div className={`my-4 border-t border-white/5 mx-2 ${isSidebarCollapsed ? 'border-transparent' : ''}`}></div>
+        <div className={`my-4 border-t border-white/5 mx-2 transition-opacity duration-500 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}></div>
 
-        {!isSidebarCollapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2 mb-1">أدوات</p>}
+        {!isSidebarCollapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2 mb-1 animate-in fade-in duration-700">أدوات</p>}
         <NavButton view={View.ANALYTICS} currentView={currentView} text="التحليلات" />
         <NavButton view={View.REPORTING} currentView={currentView} text="التقارير" />
         <NavButton view={View.TEMPLATES} currentView={currentView} text="القوالب" compareViews={[View.TEMPLATE_CREATOR]} />
         <NavButton view={View.CATEGORIES} currentView={currentView} text="الفئات" />
         <NavButton view={View.ARCHIVE} currentView={currentView} text="البحث" />
 
-        <div className={`my-4 border-t border-white/5 mx-2 ${isSidebarCollapsed ? 'border-transparent' : ''}`}></div>
+        <div className={`my-4 border-t border-white/5 mx-2 transition-opacity duration-500 ${isSidebarCollapsed ? 'opacity-0' : 'opacity-100'}`}></div>
 
-        {!isSidebarCollapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2 mb-1">النظام</p>}
+        {!isSidebarCollapsed && <p className="px-3 text-[10px] font-black text-slate-500 uppercase tracking-widest mt-2 mb-1 animate-in fade-in duration-700">النظام</p>}
         <NavButton view={View.SETTINGS} currentView={currentView} text="الإعدادات" />
         <NavButton view={View.ABOUT} currentView={currentView} text="حول" />
       </nav>
 
-      {/* Footer - Toggle with Icon and Text */}
-      <div className="p-3 border-t border-white/5 bg-white/5">
+      <div className="p-3 border-t border-white/5 bg-black/20">
           <button 
             onClick={toggleSidebar}
-            className={`w-full flex items-center gap-3 p-3 rounded-xl transition-all duration-200 group hover:bg-white/10 ${isSidebarCollapsed ? 'justify-center' : ''}`}
+            className={`w-full flex items-center gap-3 p-3 rounded-2xl transition-all duration-300 group hover:bg-indigo-600/10 border border-transparent hover:border-indigo-500/20 ${isSidebarCollapsed ? 'justify-center' : ''}`}
             title={isSidebarCollapsed ? "توسيع القائمة" : "طي القائمة"}
           >
-              <div className={`text-slate-400 group-hover:text-white transition-colors`}>
-                  {/* Logic: If collapsed, show Left Arrow (expand). If expanded, show Right Arrow (collapse) for RTL layout */}
+              <div className={`text-slate-400 group-hover:text-indigo-400 transition-all duration-300 transform ${isSidebarCollapsed ? 'scale-110' : 'group-hover:translate-x-1'}`}>
                   {isSidebarCollapsed ? <ChevronLeftIcon className="w-5 h-5" /> : <ChevronRightIcon className="w-5 h-5" />}
               </div>
               {!isSidebarCollapsed && (
-                  <span className="font-bold text-sm text-slate-300 group-hover:text-white transition-colors">
-                      طي القائمة
+                  <span className="font-black text-xs text-slate-400 group-hover:text-white transition-colors uppercase tracking-widest">
+                      طي القائمة الجانبية
                   </span>
               )}
           </button>

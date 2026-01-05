@@ -47,8 +47,9 @@ export async function onRequestPost(context: any) {
         };
     } else if (task === 'generate_variations') {
         modelName = "gemini-3-pro-preview";
-        const { isReply, originalContent, objective, sender, receiver, subject, strategy_logic } = payload;
-        systemInstruction += ` ولد 3 نسخ (محايدة، حازمة، دبلوماسية) HTML. الاستراتيجية: ${strategy_logic || 'رسمية'}`;
+        // @FIX: Changed strategy_logic to principles in payload destructuring
+        const { isReply, originalContent, objective, sender, receiver, subject, principles } = payload;
+        systemInstruction += ` ولد 3 نسخ (محايدة، حازمة، دبلوماسية) HTML. التخصيص: ${principles || 'رسمية'}`;
         responseSchema = {
             type: Type.OBJECT,
             properties: {

@@ -35,6 +35,7 @@ export async function analyzeStrategicPaths(letter: Letter): Promise<StrategicAn
 
 /**
  * توليد مسودات الخطابات عبر البروكسي
+ * @FIX: Updated interface to use 'principles' instead of 'strategy_logic' to match component usage
  */
 export async function generateLetterVariations(params: {
     isReply: boolean,
@@ -43,7 +44,7 @@ export async function generateLetterVariations(params: {
     sender: string,
     receiver: string,
     subject: string,
-    strategy_logic?: string
+    principles: string
 }): Promise<{ variations: LetterVariations, analysis: { strategic_feedback: string[] } }> {
     return callProxy('/api/ai', {
         task: 'generate_variations',
