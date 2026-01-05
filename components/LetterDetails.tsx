@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Letter, LetterStatus, ApprovalRecord, CorrespondenceType, Attachment, PriorityLevel, Tone } from '../types';
+import { Letter, LetterStatus, ApprovalRecord, CorrespondenceType, PriorityLevel, Tone } from '../types';
 import { toast } from 'react-hot-toast';
 import { analyzeLetterBrief, analyzeStrategicPaths, generateSmartReplies } from '../services/geminiService';
 import RichTextEditor from './RichTextEditor';
@@ -26,6 +26,8 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   
   const [isEditing, setIsEditing] = useState(false);
   const [editedBody, setEditedBody] = useState(letter.body);
+  
+  // حالات تحميل منفصلة لكل ميزة
   const [isLoadingBrief, setIsLoadingBrief] = useState(false);
   const [isLoadingStrategy, setIsLoadingStrategy] = useState(false);
   const [isLoadingReplies, setIsLoadingReplies] = useState(false);
@@ -36,12 +38,13 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   const aiStrategy = letter.aiCache?.strategy;
   const smartReplies = letter.aiCache?.smartReplies;
 
+  // وظائف التحليل المنفصلة
   const handleBriefAnalysis = async () => {
     setIsLoadingBrief(true);
     try {
         const brief = await analyzeLetterBrief(letter);
         dispatch({ type: 'UPDATE_LETTER', payload: { ...letter, aiCache: { ...letter.aiCache, brief } } });
-        toast.success("تم توليد الموجز التنفيذي");
+        toast.success("تم تحديث الموجز بنجاح");
     } catch (e: any) { toast.error(e.message); } finally { setIsLoadingBrief(false); }
   };
 
@@ -92,7 +95,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   return (
     <div className="p-4 lg:p-6 space-y-8 animate-in fade-in duration-500 pb-24 relative">
       
-      {/* قسم المساعد الذكي المفصول المهام */}
+      {/* مركز التحليل الذكي المطور */}
       <div className="bg-indigo-500/5 border border-indigo-500/10 p-8 rounded-[3rem] relative overflow-hidden group shadow-2xl">
           <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500 opacity-40"></div>
           
@@ -102,29 +105,28 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                       <BrainCircuitIcon className="w-8 h-8" />
                   </div>
                   <div>
-                    <h3 className="text-xl font-black text-white">مركز الرؤى الذكية</h3>
-                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">تفعيل أدوات التحليل حسب الحاجة</p>
+                    <h3 className="text-xl font-black text-white">مركز الرؤى الاستراتيجية</h3>
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-1">تفعيل أدوات التحليل بشكل منفصل</p>
                   </div>
               </div>
               
               <div className="flex flex-wrap gap-2">
-                  <button onClick={handleBriefAnalysis} disabled={isLoadingBrief} className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black transition-all shadow-xl disabled:opacity-50">
+                  <button onClick={handleBriefAnalysis} disabled={isLoadingBrief} className="flex items-center gap-2 px-4 py-2.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-[10px] font-black transition-all shadow-xl">
                       {isLoadingBrief ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div> : <FileTextIcon className="w-3.5 h-3.5" />}
-                      {aiBrief ? 'تحديث الموجز' : 'توليد موجز'}
+                      موجز الخطاب
                   </button>
-                  <button onClick={handleStrategyAnalysis} disabled={isLoadingStrategy} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black transition-all shadow-xl disabled:opacity-50">
+                  <button onClick={handleStrategyAnalysis} disabled={isLoadingStrategy} className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-50 text-white rounded-xl text-[10px] font-black transition-all shadow-xl">
                       {isLoadingStrategy ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div> : <TargetIcon className="w-3.5 h-3.5" />}
-                      {aiStrategy ? 'تحديث التحليل الاستراتيجي' : 'تحليل النوايا والمخاطر'}
+                      كشف النوايا والمخاطر
                   </button>
-                  <button onClick={handleRepliesAnalysis} disabled={isLoadingReplies} className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black transition-all shadow-xl disabled:opacity-50">
+                  <button onClick={handleRepliesAnalysis} disabled={isLoadingReplies} className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-50 text-white rounded-xl text-[10px] font-black transition-all shadow-xl">
                       {isLoadingReplies ? <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div> : <SparklesIcon className="w-3.5 h-3.5" />}
-                      استكشاف مسارات الرد
+                      مسارات الرد
                   </button>
               </div>
           </div>
 
           <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-              {/* العمود الأيمن: الموجز والتحليل */}
               <div className="xl:col-span-8 space-y-6">
                   {aiBrief && (
                       <div className="bg-slate-900/60 p-6 rounded-[2rem] border border-white/5 animate-in slide-in-from-top-4">
@@ -135,7 +137,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                           <p className="text-sm text-slate-100 font-bold leading-relaxed mb-4">{aiBrief.summary}</p>
                           <div className="flex flex-wrap gap-2">
                               {aiBrief.keyPoints.map((p, i) => (
-                                  <span key={i} className="bg-white/5 px-3 py-1.5 rounded-lg text-[11px] text-slate-400 font-bold border border-white/5 flex items-center gap-2">
+                                  <span key={i} className="bg-white/5 px-3 py-1.5 rounded-lg text-[11px] text-slate-400 font-bold flex items-center gap-2">
                                       <div className="w-1 h-1 bg-indigo-500 rounded-full"></div> {p}
                                   </span>
                               ))}
@@ -149,14 +151,19 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                               <div>
                                   <div className="flex items-center gap-2 text-indigo-400 mb-2">
                                       <TargetIcon className="w-5 h-5" />
-                                      <span className="text-[10px] font-black uppercase tracking-widest">كشف النوايا</span>
+                                      <span className="text-[10px] font-black uppercase tracking-widest">النوايا المرصودة</span>
                                   </div>
                                   <p className="text-xs text-slate-300 font-bold leading-relaxed">{aiStrategy.sender_intent}</p>
+                                  
+                                  <div className="mt-4 flex items-center gap-2 text-indigo-300">
+                                      <ScaleIcon className="w-4 h-4" />
+                                      <span className="text-[9px] font-black uppercase">{aiStrategy.power_balance}</span>
+                                  </div>
                               </div>
                               <div>
                                   <div className="flex items-center gap-2 text-rose-400 mb-2">
                                       <ShieldAlertIcon className="w-5 h-5" />
-                                      <span className="text-[10px] font-black uppercase tracking-widest">المخاطر المرصودة</span>
+                                      <span className="text-[10px] font-black uppercase tracking-widest">المخاطر المحتملة</span>
                                   </div>
                                   <ul className="space-y-1">
                                       {aiStrategy.risks.map((r, i) => (
@@ -165,15 +172,28 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                                   </ul>
                               </div>
                           </div>
+
+                          {aiStrategy.paths && aiStrategy.paths.length > 0 && (
+                              <div className="pt-4 border-t border-white/5">
+                                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">مسارات استراتيجية مقترحة:</p>
+                                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      {aiStrategy.paths.map((path, i) => (
+                                          <div key={i} className="p-4 bg-white/5 rounded-2xl border border-white/5">
+                                              <p className="text-xs font-black text-indigo-400 mb-1">{path.title}</p>
+                                              <p className="text-[11px] text-slate-400 leading-relaxed">{path.description}</p>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          )}
                       </div>
                   )}
               </div>
 
-              {/* العمود الأيسر: مسارات الرد */}
               <div className="xl:col-span-4">
                   {smartReplies && smartReplies.length > 0 ? (
                       <div className="space-y-3">
-                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2 mb-2">مسارات الرد المقترحة:</p>
+                          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest px-2 mb-2">توجيهات الرد السريع:</p>
                           {smartReplies.map((reply, i) => (
                               <button 
                                 key={i} 
@@ -203,7 +223,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 border-b border-white/5 pb-6">
               <div>
                   <h3 className="text-xl font-black text-white">بطاقة المعاملة الرسمية</h3>
-                  <p className="text-xs text-slate-500 font-bold mt-1">البيانات الوصفية وسجل الحالة</p>
+                  <p className="text-xs text-slate-500 font-bold mt-1">سجل الحالة والبيانات المرجعية</p>
               </div>
               <div className="flex items-center gap-3 no-print">
                   <button onClick={() => onReply(letter)} className="flex items-center gap-2 px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition-all shadow-lg active:scale-95 group min-w-[140px]">
@@ -227,7 +247,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
           </div>
       </div>
 
-      {/* محتوى المعاملة */}
       <div className="space-y-6">
         <div className="flex items-center justify-between px-2">
             <h3 className="text-2xl font-black text-slate-100 tracking-tight">نص المعاملة</h3>
@@ -236,7 +255,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                     <PrinterIcon className="w-6 h-6"/>
                 </button>
                 {!isEditing && (
-                    <button onClick={() => { setEditedBody(letter.body); setIsEditing(true); }} className="text-xs font-black text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 px-5 py-2.5 rounded-xl border border-indigo-500/20 transition-all">
+                    <button onClick={handleEdit} className="text-xs font-black text-indigo-400 hover:text-indigo-300 bg-indigo-500/10 px-5 py-2.5 rounded-xl border border-indigo-500/20 transition-all">
                         تعديل النص يدوياً
                     </button>
                 )}
@@ -248,7 +267,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                 <RichTextEditor value={editedBody} onChange={setEditedBody} ringColor={theme.ring} minHeight="min-h-[600px]" />
                 <div className="flex justify-end gap-3 bg-slate-900/60 p-4 rounded-2xl border border-white/5">
                     <button onClick={() => setIsEditing(false)} className="px-6 py-2.5 text-sm font-bold text-slate-400 hover:text-white">إلغاء</button>
-                    <button onClick={() => { dispatch({ type: 'UPDATE_LETTER', payload: { ...letter, body: editedBody } }); setIsEditing(false); toast.success("تم الحفظ."); }} className={`px-10 py-3 text-sm font-black text-white ${theme.bg} rounded-xl shadow-xl`}>
+                    <button onClick={handleSaveEdit} className={`px-10 py-3 text-sm font-black text-white ${theme.bg} rounded-xl shadow-xl`}>
                         اعتماد وحفظ التعديلات
                     </button>
                 </div>
@@ -261,4 +280,15 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
       </div>
     </div>
   );
+
+  function handleEdit() {
+      setEditedBody(letter.body);
+      setIsEditing(true);
+  }
+
+  function handleSaveEdit() {
+      dispatch({ type: 'UPDATE_LETTER', payload: { ...letter, body: editedBody } });
+      setIsEditing(false);
+      toast.success("تم حفظ التعديلات.");
+  }
 }

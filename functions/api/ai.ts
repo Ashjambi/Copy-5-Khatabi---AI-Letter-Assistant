@@ -16,15 +16,16 @@ export async function onRequestPost(context: any) {
     }
 
     const ai = new GoogleGenAI({ apiKey });
-    // استخدام Flash كنموذج افتراضي لأنه أكثر استقراراً في الكوتا
-    let modelName = "gemini-3-flash-preview"; 
+    // استخدام Pro للمهام الاستراتيجية و Flash للمهام السريعة
+    const modelName = task === 'analyze_strategy' ? "gemini-3-pro-preview" : "gemini-3-flash-preview"; 
+    
     let responseSchema: any = undefined;
     let systemInstruction = `أنت خبير استراتيجيات إدارية عربي رفيع المستوى. ${ARABIC_STRICT_PROTOCOL}`;
     let prompt = "";
 
     if (task === 'analyze_strategy') {
-        systemInstruction += " حلل الخطاب وحدد النوايا وميزان القوة و3 مسارات للرد.";
-        prompt = `حلل الخطاب التالي:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
+        systemInstruction += " حلل الخطاب وحدد النوايا وميزان القوة و3 مسارات للرد واستخلص المخاطر الإدارية.";
+        prompt = `حلل الخطاب التالي استراتيجياً:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
         responseSchema = {
             type: Type.OBJECT,
             properties: {
@@ -39,22 +40,19 @@ export async function onRequestPost(context: any) {
                             id: { type: Type.STRING },
                             title: { type: Type.STRING },
                             description: { type: Type.STRING },
-                            logic: { type: Type.STRING },
-                            impact: { type: Type.STRING },
                             suggestedObjective: { type: Type.STRING }
                         }
                     }
                 }
             },
-            required: ["sender_intent", "paths"]
+            required: ["sender_intent", "risks", "paths"]
         };
     } else if (task === 'generate_variations') {
-        // تم استخدام Flash هنا لضمان عدم حدوث 429 المتكرر في Pro
         const { isReply, originalContent, objective, sender, receiver, subject, principles } = payload;
         systemInstruction += ` ولد 3 نسخ (محايدة، حازمة، دبلوماسية) بصيغة HTML. التخصيص: ${principles || 'رسمية'}`;
         prompt = isReply 
-            ? `رد على الخطاب المرجعي التالي:\n[المحتوى المرجعي]: ${originalContent}\n[الهدف من الرد]: ${objective}\n[المرسل]: ${sender}\n[المستلم]: ${receiver}\n[الموضوع]: ${subject}`
-            : `أنشئ خطاباً جديداً بالبيانات التالية:\n[الموضوع]: ${subject}\n[الهدف]: ${objective}\n[المرسل]: ${sender}\n[المستلم]: ${receiver}`;
+            ? `رد على الخطاب المرجعي:\n[المحتوى المرجعي]: ${originalContent}\n[الهدف]: ${objective}\n[المرسل]: ${sender}\n[المستلم]: ${receiver}`
+            : `أنشئ خطاباً جديداً:\n[الموضوع]: ${subject}\n[الهدف]: ${objective}\n[المرسل]: ${sender}\n[المستلم]: ${receiver}`;
         
         responseSchema = {
             type: Type.OBJECT,
@@ -72,18 +70,19 @@ export async function onRequestPost(context: any) {
             }
         };
     } else if (task === 'analyze_brief') {
-        systemInstruction += " لخص الخطاب واستخرج النقاط الرئيسية.";
+        systemInstruction += " لخص الخطاب واستخرج النقاط الرئيسية بدقة.";
         prompt = `لخص هذا الخطاب:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
         responseSchema = {
             type: Type.OBJECT,
             properties: {
                 summary: { type: Type.STRING },
                 keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } }
-            }
+            },
+            required: ["summary", "keyPoints"]
         };
     } else if (task === 'smart_replies') {
         systemInstruction += " اقترح 3 مسارات للرد على الخطاب الموفر.";
-        prompt = `اقترح ردوداً على:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
+        prompt = `اقترح ردوداً استراتيجية على:\nالموضوع: ${payload.subject}\nالمحتوى: ${payload.body}`;
         responseSchema = {
             type: Type.ARRAY,
             items: {
@@ -97,8 +96,8 @@ export async function onRequestPost(context: any) {
             }
         };
     } else if (task === 'enhance_letter') {
-        systemInstruction += " حسن الصياغة وقدم اقتراحات تعديل واضحة.";
-        prompt = `حسن صياغة النص التالي:\n${payload}`;
+        systemInstruction += " مراجع لغوي وإداري. حسن الصياغة وقدم اقتراحات واضحة.";
+        prompt = `راجع النص التالي:\n${payload}`;
         responseSchema = {
             type: Type.ARRAY,
             items: {
@@ -112,8 +111,8 @@ export async function onRequestPost(context: any) {
         };
     } else if (task === 'refine_chat') {
         const { currentBody, userInstruction, context: chatContext } = payload;
-        systemInstruction += " عدل النص الموفر لغوياً وإدارياً وأعده بصيغة HTML.";
-        prompt = `النص الحالي: ${currentBody}\nالسياق: ${chatContext}\nالتوجيه المطلوب: ${userInstruction}`;
+        systemInstruction += " عدل النص بناءً على توجيهات المستخدم وأعده بصيغة HTML.";
+        prompt = `النص: ${currentBody}\nالتوجيه: ${userInstruction}\nالسياق: ${chatContext}`;
         
         const resp = await ai.models.generateContent({
             model: modelName,
@@ -121,6 +120,18 @@ export async function onRequestPost(context: any) {
             config: { systemInstruction }
         });
         return new Response(JSON.stringify({ text: resp.text }), { headers: { "Content-Type": "application/json" } });
+    } else if (task === 'follow_up') {
+        prompt = `من هذه القائمة، ما المعاملات المعلقة؟ ${JSON.stringify(payload)}`;
+        responseSchema = {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    letterId: { type: Type.STRING },
+                    summary: { type: Type.STRING }
+                }
+            }
+        };
     }
 
     const response = await ai.models.generateContent({
@@ -141,7 +152,7 @@ export async function onRequestPost(context: any) {
     
     return new Response(JSON.stringify({ 
         error: isRateLimit 
-            ? "النظام مزدحم حالياً (تجاوز حد الطلبات المتزامنة). يرجى الانتظار ثوانٍ والمحاولة مرة أخرى." 
+            ? "النظام مزدحم حالياً. يرجى المحاولة بعد ثوانٍ." 
             : errorMsg 
     }), { 
         status: isRateLimit ? 429 : 500,
