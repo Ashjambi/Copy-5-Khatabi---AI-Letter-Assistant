@@ -221,7 +221,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         return { ...state, isSidebarCollapsed: !state.isSidebarCollapsed };
     case 'UPDATE_CATEGORY_NAME':
         return { ...state, letters: state.letters.map(l => l.category === action.payload.oldName ? { ...l, category: action.payload.newName } : l) };
-    // @FIX: Added ADD_COMMENT action implementation to appReducer
     case 'ADD_COMMENT': {
         const newComment: Comment = {
             id: `comment_${Date.now()}`,
