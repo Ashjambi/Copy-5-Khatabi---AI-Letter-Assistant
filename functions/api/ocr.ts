@@ -20,7 +20,7 @@ export async function onRequestPost(context: any) {
     const ai = new GoogleGenAI({ apiKey });
     
     const response = await ai.models.generateContent({
-      model: "gemini-flash-latest",
+      model: "gemini-3-flash-preview",
       contents: [
         {
           role: "user",
@@ -35,7 +35,7 @@ export async function onRequestPost(context: any) {
               - date: التاريخ (YYYY-MM-DD)
               - externalRefNumber: رقم الصادر الخارجي
               - summary: ملخص تنفيذي سطر واحد
-              - referenceId: معرف المعاملة المرتبطة إن وجد صلة: ${lettersContext}` 
+              - referenceId: المعاملة المرتبطة إن وجدت من السياق: ${lettersContext}` 
             }
           ]
         }
@@ -64,9 +64,8 @@ export async function onRequestPost(context: any) {
     });
 
   } catch (e: any) {
-    console.error("OCR Proxy Error:", e);
     const status = e.message?.includes('429') ? 429 : 500;
-    return new Response(JSON.stringify({ error: status === 429 ? "تم تجاوز حد استخدام الكوتا اليومي لمسح المستندات." : e.message }), { 
+    return new Response(JSON.stringify({ error: status === 429 ? "تجاوزت حد الكوتا للمسح." : e.message }), { 
       status,
       headers: { "Content-Type": "application/json" }
     });

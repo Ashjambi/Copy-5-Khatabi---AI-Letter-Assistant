@@ -1,6 +1,8 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
 
+const ARABIC_STRICT_PROTOCOL = "قاعدة جوهرية: يجب أن تكون جميع النصوص العربية بكلمات متصلة وطبيعية (مثل: 'الموضوع' وليس 'ا ل م و ض و ع'). يُمنع منعاً باتاً تقطيع الحروف.";
+
 export async function onRequestPost(context: any) {
   const { request, env } = context;
 
@@ -10,46 +12,43 @@ export async function onRequestPost(context: any) {
     const apiKey = env.API_KEY || env.GEMINI_API_KEY;
 
     if (!apiKey) {
-      return new Response(JSON.stringify({ error: "API_KEY_MISSING" }), { status: 500 });
+      return new Response(JSON.stringify({ error: "مفتاح الـ API غير مهيأ في بيئة السيرفر." }), { status: 500 });
     }
 
     const ai = new GoogleGenAI({ apiKey });
     let modelName = "gemini-3-flash-preview"; 
     let responseSchema: any = undefined;
-    let systemInstruction = "أنت خبير استراتيجيات إدارية عربي. يجب أن تكون الكلمات العربية متصلة تماماً (مثال: 'الموضوع' وليس 'ا ل م و ض و ع').";
+    let systemInstruction = `أنت خبير استراتيجيات إدارية عربي رفيع المستوى. ${ARABIC_STRICT_PROTOCOL}`;
 
     if (task === 'analyze_strategy') {
-        // فكرة خارج الصندوق: تحليل الموقف الإداري قبل الصياغة
-        systemInstruction += " حلل الخطاب الوارد المرفق وحدد: 1. ميزان القوة (صالحنا/صالحهم) 2. النقاط الحرجة 3. ثلاث استراتيجيات رد (دبلوماسية، حازمة، تعاونية).";
+        systemInstruction += " حلل الخطاب وحدد النوايا وميزان القوة و3 مسارات للرد.";
         responseSchema = {
             type: Type.OBJECT,
             properties: {
-                situation_analysis: { type: Type.STRING, description: "تحليل دقيق للموقف الحالي" },
-                power_balance: { type: Type.STRING, description: "وصف لميزان القوة الإداري" },
-                strategies: {
+                sender_intent: { type: Type.STRING },
+                power_balance: { type: Type.STRING },
+                risks: { type: Type.ARRAY, items: { type: Type.STRING } },
+                paths: {
                     type: Type.ARRAY,
                     items: {
                         type: Type.OBJECT,
                         properties: {
                             id: { type: Type.STRING },
-                            title: { type: Type.STRING, description: "اسم الاستراتيجية" },
-                            impact: { type: Type.STRING, description: "النتيجة المتوقعة لهذا الرد" },
-                            logic: { type: Type.STRING, description: "المنطق خلف هذا المسار" },
-                            suggested_objective: { type: Type.STRING }
+                            title: { type: Type.STRING },
+                            description: { type: Type.STRING },
+                            logic: { type: Type.STRING },
+                            impact: { type: Type.STRING },
+                            suggestedObjective: { type: Type.STRING }
                         }
                     }
                 }
             },
-            required: ["situation_analysis", "strategies"]
+            required: ["sender_intent", "paths"]
         };
     } else if (task === 'generate_variations') {
-        modelName = "gemini-3-pro-preview"; // جودة فائقة للصياغة
+        modelName = "gemini-3-pro-preview";
         const { isReply, originalContent, objective, sender, receiver, subject, strategy_logic } = payload;
-        systemInstruction += ` المطلوب توليد 3 نسخ بصيغة HTML. الاستراتيجية المتبعة: ${strategy_logic || 'رسمية'}`;
-        const prompt = isReply 
-            ? `الخطاب الوارد: ${originalContent}\nالهدف من الرد: ${objective}\nمن: ${sender} إلى: ${receiver}\nالموضوع: ${subject}`
-            : `إنشاء خطاب جديد: ${subject}\nالمحتوى المطلوب: ${objective}\nمن: ${sender} إلى: ${receiver}`;
-        
+        systemInstruction += ` ولد 3 نسخ (محايدة، حازمة، دبلوماسية) HTML. الاستراتيجية: ${strategy_logic || 'رسمية'}`;
         responseSchema = {
             type: Type.OBJECT,
             properties: {
@@ -65,14 +64,50 @@ export async function onRequestPost(context: any) {
                 }
             }
         };
+    } else if (task === 'analyze_brief') {
+        systemInstruction += " لخص الخطاب واستخرج النقاط الرئيسية.";
+        responseSchema = {
+            type: Type.OBJECT,
+            properties: {
+                summary: { type: Type.STRING },
+                keyPoints: { type: Type.ARRAY, items: { type: Type.STRING } }
+            }
+        };
+    } else if (task === 'smart_replies') {
+        systemInstruction += " اقترح 3 مسارات للرد على الخطاب الموفر.";
+        responseSchema = {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    title: { type: Type.STRING },
+                    objective: { type: Type.STRING },
+                    tone: { type: Type.STRING },
+                    type: { type: Type.STRING }
+                }
+            }
+        };
+    } else if (task === 'enhance_letter') {
+        systemInstruction += " حسن الصياغة وقدم اقتراحات تعديل واضحة.";
+        responseSchema = {
+            type: Type.ARRAY,
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    original_part: { type: Type.STRING },
+                    suggested_improvement: { type: Type.STRING },
+                    reason: { type: Type.STRING }
+                }
+            }
+        };
     } else if (task === 'refine_chat') {
-        // الدردشة لتنقيح النص
-        const response = await ai.models.generateContent({
+        const { currentBody, userInstruction, context: chatContext } = payload;
+        const resp = await ai.models.generateContent({
             model: "gemini-3-flash-preview",
-            contents: payload,
-            config: { systemInstruction: "أنت خبير صياغة. عدل النص الموفر لغوياً وإدارياً مع إبقاء الكلمات العربية متصلة." }
+            contents: `النص: ${currentBody}\nالسياق: ${chatContext}\nالتوجيه: ${userInstruction}`,
+            config: { systemInstruction: systemInstruction + " عدل النص الموفر لغوياً وإدارياً وأعده بصيغة HTML." }
         });
-        return new Response(JSON.stringify({ text: response.text }), { headers: { "Content-Type": "application/json" } });
+        return new Response(JSON.stringify({ text: resp.text }), { headers: { "Content-Type": "application/json" } });
     }
 
     const response = await ai.models.generateContent({
@@ -80,7 +115,7 @@ export async function onRequestPost(context: any) {
       contents: typeof payload === 'string' ? payload : JSON.stringify(payload),
       config: {
           systemInstruction,
-          responseMimeType: "application/json",
+          responseMimeType: responseSchema ? "application/json" : undefined,
           responseSchema: responseSchema
       }
     });
@@ -88,11 +123,9 @@ export async function onRequestPost(context: any) {
     return new Response(response.text, { headers: { "Content-Type": "application/json" } });
 
   } catch (e: any) {
-    const isQuotaError = e.message?.includes('429') || e.message?.includes('quota');
-    return new Response(JSON.stringify({ 
-        error: isQuotaError ? "تجاوزت حد الكوتا. يرجى الانتظار دقيقة." : e.message 
-    }), { 
-        status: isQuotaError ? 429 : 500,
+    const isQuota = e.message?.includes('429');
+    return new Response(JSON.stringify({ error: isQuota ? "تجاوزت حد الكوتا اليومي." : e.message }), { 
+        status: isQuota ? 429 : 500,
         headers: { "Content-Type": "application/json" }
     });
   }
