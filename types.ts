@@ -118,18 +118,19 @@ export interface Attachment {
     lastModified?: number;
 }
 
-export interface Comment {
-    id: string;
-    letterId: string;
-    text: string;
-    createdAt: string;
-}
-
 export interface AICache {
     brief?: { summary: string; keyPoints: string[] };
     smartReplies?: SmartReply[];
     threadSummary?: string;
     strategy?: StrategicAnalysis;
+}
+
+// @FIX: Added missing Comment interface
+export interface Comment {
+  id: string;
+  letterId: string;
+  text: string;
+  createdAt: string;
 }
 
 export interface Letter {

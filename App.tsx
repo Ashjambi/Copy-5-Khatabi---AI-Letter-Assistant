@@ -71,7 +71,8 @@ type AppAction =
   | { type: 'UPDATE_INBOUND_FORM_STATE'; payload: Partial<InboundLetterFormState> }
   | { type: 'RESET_INBOUND_FORM_STATE' }
   | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'UPDATE_CATEGORY_NAME', payload: { oldName: string, newName: string } };
+  | { type: 'UPDATE_CATEGORY_NAME', payload: { oldName: string, newName: string } }
+  | { type: 'ADD_COMMENT', payload: { letterId: string, text: string } };
 
 const initialGeneratorState: GeneratorState = {
     sender: '',
@@ -220,6 +221,16 @@ function appReducer(state: AppState, action: AppAction): AppState {
         return { ...state, isSidebarCollapsed: !state.isSidebarCollapsed };
     case 'UPDATE_CATEGORY_NAME':
         return { ...state, letters: state.letters.map(l => l.category === action.payload.oldName ? { ...l, category: action.payload.newName } : l) };
+    // @FIX: Added ADD_COMMENT action implementation to appReducer
+    case 'ADD_COMMENT': {
+        const newComment: Comment = {
+            id: `comment_${Date.now()}`,
+            letterId: action.payload.letterId,
+            text: action.payload.text,
+            createdAt: new Date().toLocaleString('ar-SA-u-nu-latn')
+        };
+        return { ...state, comments: [newComment, ...state.comments] };
+    }
     default:
         return state;
   }

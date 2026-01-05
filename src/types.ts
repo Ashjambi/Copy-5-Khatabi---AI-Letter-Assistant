@@ -77,6 +77,22 @@ export enum View {
   REPORTING,
 }
 
+export interface StrategicPath {
+    id: string;
+    title: string;
+    description: string;
+    logic: string;
+    impact: string;
+    suggestedObjective: string;
+}
+
+export interface StrategicAnalysis {
+    sender_intent: string;
+    power_balance: string;
+    risks: string[];
+    paths: StrategicPath[];
+}
+
 export interface User {
   id: string;
   name: string;
@@ -102,17 +118,19 @@ export interface Attachment {
     lastModified?: number;
 }
 
-export interface Comment {
-    id: string;
-    letterId: string;
-    text: string;
-    createdAt: string;
-}
-
 export interface AICache {
     brief?: { summary: string; keyPoints: string[] };
     smartReplies?: SmartReply[];
     threadSummary?: string;
+    strategy?: StrategicAnalysis;
+}
+
+// @FIX: Added Comment interface
+export interface Comment {
+  id: string;
+  letterId: string;
+  text: string;
+  createdAt: string;
 }
 
 export interface Letter {

@@ -236,7 +236,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         const { letterId, sender, recipient, subject, mode, objective, tone } = action.payload;
         const targetLetter = state.letters.find(l => l.id === letterId);
         
-        // تجهيز سياق المحتوى للذكاء الاصطناعي
         const combinedContent = targetLetter 
             ? `[تفاصيل الخطاب المرجعي]
                رقم المعاملة: ${targetLetter.internalRefNumber || '---'}
@@ -269,6 +268,30 @@ function appReducer(state: AppState, action: AppAction): AppState {
         return { ...state, generatorState: { ...state.generatorState, ...action.payload } };
     case 'TOGGLE_SIDEBAR':
         return { ...state, isSidebarCollapsed: !state.isSidebarCollapsed };
+    // @FIX: Added implementation for missing actions in appReducer
+    case 'ADD_COMMENT': {
+        const newComment: Comment = {
+            id: `comment_${Date.now()}`,
+            letterId: action.payload.letterId,
+            text: action.payload.text,
+            createdAt: new Date().toLocaleString('ar-SA-u-nu-latn')
+        };
+        return { ...state, comments: [newComment, ...state.comments] };
+    }
+    case 'MARK_NOTIFICATION_READ':
+        return { ...state, notifications: state.notifications.map(n => n.id === action.payload ? { ...n, read: true } : n) };
+    case 'MARK_ALL_NOTIFICATIONS_READ':
+        return { ...state, notifications: state.notifications.map(n => ({ ...n, read: true })) };
+    case 'UPDATE_CATEGORY_NAME':
+        return { ...state, letters: state.letters.map(l => l.category === action.payload.oldName ? { ...l, category: action.payload.newName } : l) };
+    case 'DELETE_PRINCIPLE':
+        return { ...state, learnedPrinciples: state.learnedPrinciples.filter(p => p.id !== action.payload) };
+    case 'UPDATE_SETTINGS':
+        return { ...state, companySettings: action.payload };
+    case 'RESET_INBOUND_FORM_STATE':
+        return { ...state, inboundLetterFormState: initialInboundLetterFormState };
+    case 'UPDATE_INBOUND_FORM_STATE':
+        return { ...state, inboundLetterFormState: { ...state.inboundLetterFormState, ...action.payload } };
     default:
         return state;
   }
