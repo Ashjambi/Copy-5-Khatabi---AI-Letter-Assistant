@@ -31,13 +31,12 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
 
   const theme = getThemeClasses(settings.primaryColor);
   
-  // استرجاع البيانات من التخزين المؤقت
   const aiBrief = letter.aiCache?.brief;
   const aiStrategy = letter.aiCache?.strategy;
 
   const handleFullAnalysis = async () => {
     setIsLoadingAnalysis(true);
-    const analysisToast = toast.loading("جاري تحليل النوايا واستخراج النقاط الجوهرية...");
+    const analysisToast = toast.loading("جاري كشف النوايا وتحليل الموقف...");
     try {
         const [brief, strategy] = await Promise.all([
             analyzeLetterBrief(letter),
@@ -51,9 +50,10 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                 aiCache: { ...letter.aiCache, brief, strategy } 
             } 
         });
-        toast.success("اكتمل التحليل العميق بنجاح.", { id: analysisToast });
+        toast.success("اكتمل التحليل الاستراتيجي بنجاح.", { id: analysisToast });
     } catch (e: any) { 
-        toast.error("فشل التحليل. يرجى المحاولة لاحقاً.", { id: analysisToast }); 
+        console.error(e);
+        toast.error("فشل التحليل الاستراتيجي. يرجى التحقق من الاتصال.", { id: analysisToast }); 
     } finally { 
         setIsLoadingAnalysis(false); 
     }
@@ -99,7 +99,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
   return (
     <div className="p-4 lg:p-6 space-y-8 animate-in fade-in duration-500 pb-24 relative">
       
-      {/* 1. قسم المساعد الذكي المطور - يجمع بين كشف النوايا والنقاط المهمة */}
+      {/* قسم المساعد الاستراتيجي المطور */}
       <div className="bg-indigo-500/5 border border-indigo-500/10 p-8 rounded-[3rem] relative overflow-hidden group shadow-2xl">
           <div className="absolute top-0 left-0 w-1.5 h-full bg-indigo-500 opacity-40"></div>
           
@@ -134,8 +134,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
 
           {(aiBrief || aiStrategy) && (
               <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 animate-in slide-in-from-top-4 duration-700">
-                  
-                  {/* العمود الأول: كشف النوايا والمخاطر */}
                   <div className="xl:col-span-7 space-y-6">
                       {aiStrategy && (
                         <div className="bg-slate-950/60 p-7 rounded-[2.5rem] border border-white/5 shadow-inner">
@@ -184,7 +182,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                       )}
                   </div>
 
-                  {/* العمود الثاني: النقاط الجوهرية (Action Items) */}
                   <div className="xl:col-span-5">
                       <div className="bg-slate-900/80 p-8 rounded-[2.5rem] border border-white/5 h-full shadow-2xl relative">
                           <div className="flex items-center justify-between mb-8">
@@ -205,12 +202,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                                       <span className="text-sm text-slate-300 font-bold leading-relaxed group-hover/point:text-white transition-colors">{point}</span>
                                   </li>
                               ))}
-                              {(!aiBrief || aiBrief.keyPoints.length === 0) && !isLoadingAnalysis && (
-                                  <div className="text-center py-12 opacity-30">
-                                      <BotIcon className="w-12 h-12 mx-auto mb-3" />
-                                      <p className="text-xs font-black">لا توجد نقاط معالجة مستخرجة.</p>
-                                  </div>
-                              )}
                           </ul>
                       </div>
                   </div>
@@ -218,7 +209,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
           )}
       </div>
 
-      {/* 2. تفاصيل وبطاقة المعاملة - مع شريط الإجراءات السريعة المدمج */}
+      {/* بطاقة المعاملة الرسمية */}
       <div className="bg-slate-900/40 border border-white/5 rounded-[2.5rem] p-8">
           <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-6 border-b border-white/5 pb-6">
               <div>
@@ -226,7 +217,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                   <p className="text-xs text-slate-500 font-bold mt-1">البيانات الوصفية وسجل الحالة</p>
               </div>
               
-              {/* شريط الإجراءات السريعة - مكان جديد لا يحجب النص */}
               {letter.status !== LetterStatus.ARCHIVED && (
                   <div className="flex items-center gap-3 bg-slate-950/60 p-2 rounded-2xl border border-white/5 shadow-inner no-print">
                       <button 
@@ -257,7 +247,7 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
           </div>
       </div>
 
-      {/* 3. محتوى المعاملة */}
+      {/* نص المعاملة */}
       <div className="space-y-6">
         <div className="flex items-center justify-between px-2">
             <div className="flex items-center gap-3">
@@ -300,23 +290,11 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
             <div className="rounded-[3rem] border border-white/10 bg-white/95 text-black shadow-[0_30px_100px_rgba(0,0,0,0.4)] p-12 lg:p-20 relative overflow-hidden group/text">
                 <div className="absolute top-8 right-8 text-[10px] text-slate-300 font-black uppercase tracking-widest pointer-events-none opacity-30 group-hover/text:opacity-60 transition-opacity">الخطاب الرسمي المعتمد</div>
                 <div className="prose max-w-none font-bold text-slate-900 text-xl leading-relaxed text-justify" dangerouslySetInnerHTML={{ __html: sanitizeHTML(letter.body) }} />
-                
-                {letter.isSigned && (
-                    <div className="mt-20 pt-10 border-t-2 border-dashed border-slate-200 flex items-center justify-between opacity-80">
-                        <div className="flex items-center gap-4 text-emerald-800 font-black">
-                            <div className="p-3 bg-emerald-100 rounded-2xl"><CheckCircleIcon className="w-8 h-8" /></div>
-                            <div>
-                                <p className="text-lg">تم التوقيع والمصادقة رقمياً</p>
-                                <p className="text-xs font-mono text-emerald-600 mt-1 uppercase tracking-widest">ID: {letter.id.substring(0, 12)}</p>
-                            </div>
-                        </div>
-                    </div>
-                )}
             </div>
         )}
       </div>
 
-      {/* 4. سلسلة المراسلات - تظهر في الأسفل دائماً */}
+      {/* سلسلة المراسلات */}
       {threadLetters && threadLetters.length > 1 && (
         <div className="glass-card border border-white/10 p-8 rounded-[3rem] overflow-hidden bg-slate-950/20 shadow-xl">
              <div className="flex items-center gap-3 mb-10">
@@ -340,7 +318,6 @@ export default function LetterDetails({ letter }: LetterDetailsProps): React.Rea
                                     <div className="flex items-center gap-3"><span className="text-[10px] font-mono text-slate-500 font-bold">{tl.date}</span>{getStatusChip(tl.status)}</div>
                                 </div>
                                 <p className={`text-base font-black leading-snug ${isCurrent ? 'text-white' : 'text-slate-300'}`}>{tl.subject}</p>
-                                {isCurrent && <span className="inline-block mt-3 text-[9px] font-black text-indigo-400 uppercase tracking-widest">المعاملة المفتوحة حالياً</span>}
                             </div>
                         </div>
                     );
